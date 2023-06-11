@@ -22,7 +22,8 @@ from torchvision.models.resnet import resnet18, resnet34 #these are used in TFGr
 import numpy as np
 import math
 
-from .tools import gen_dx_bx, cumsum_trick, QuickCumsum #take in these functions from the tools.py file
+#fixing relative import
+from tools import gen_dx_bx, cumsum_trick, QuickCumsum #take in these functions from the tools.py file
                                                         #gen_dx_bx gives the grid spacings for the semantic grid produced
                                                         #cumsum_trick - this is used in the BEV pooling step-as described in LSS paper
                                                         #QuickCumSum - also has to do with cumulative sum for pooling (will need to see about how this may be replaced

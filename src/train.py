@@ -11,9 +11,10 @@ from tensorboardX import SummaryWriter
 import numpy as np
 import os
 
-from .models import compile_model
-from .data import compile_data
-from .tools import SimpleLoss, get_batch_iou, get_val_info,points_to_voxel_loop
+#fixing relative imports due to change in __init__.py
+from models import compile_model
+from data import compile_data
+from tools import SimpleLoss, get_batch_iou, get_val_info,points_to_voxel_loop
 
 def train(version,
             dataroot=os.environ['NUSCENES'],

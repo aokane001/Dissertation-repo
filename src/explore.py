@@ -11,11 +11,12 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import matplotlib.patches as mpatches
 
-from .data import compile_data
-from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
+#fixing relative imports - due to change made in __init__.py
+from data import compile_data
+from tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
                     SimpleLoss, get_val_info, add_ego, gen_dx_bx,
                     get_nusc_maps, plot_nusc_map)
-from .models import compile_model
+from models import compile_model
 
 
 def lidar_check(version,

@@ -40,7 +40,8 @@ import torch.multiprocessing #think this is only necessary if training with mult
 
 from scipy.spatial import Delaunay #something to do with "Delaunay triangulation" - not sure why we need it
 
-from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx, read_point_cloud, get_gt_map_mask, get_nusc_maps
+#fixing relative import due to update in __init__.py
+from tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx, read_point_cloud, get_gt_map_mask, get_nusc_maps
 
 #Need to understand what all these do - within the tools folder of TFGrid repo - see this for full details.
 

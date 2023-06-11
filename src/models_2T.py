@@ -13,7 +13,8 @@ from torchvision.models.resnet import resnet18, resnet34
 import numpy as np
 import math
 
-from .tools import gen_dx_bx, cumsum_trick, QuickCumsum
+#fixing relative imports due to change in __init__.py
+from tools import gen_dx_bx, cumsum_trick, QuickCumsum
 from time import time
 
 ###############################################

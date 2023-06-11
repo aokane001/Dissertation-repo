@@ -20,6 +20,7 @@ import os
 import glob
 
 from mmcv import Config
+#fixing relative imports due to change in __init__.py
 from .models_2T import compile_model
 from .data import compile_data
 from .tools import SimpleLoss, get_batch_iou, get_val_info,points_to_voxel_loop
