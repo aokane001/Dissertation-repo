@@ -335,7 +335,7 @@ class Transfuser(nn.Module): #Not exactly sure what GPT represents (the differen
                             seq_len=config['seq_len'], 
                             embd_pdrop=config['embd_pdrop'], 
                             attn_pdrop=config['attn_pdrop'], 
-                            resid_pdrop=config['resid_pdrop']
+                            resid_pdrop=config['resid_pdrop'],
                             config=config)
         self.transformer3 = GPT(n_embd=256,
                             n_head=config['n_head'], 
