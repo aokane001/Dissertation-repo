@@ -309,7 +309,7 @@ class Transfuser(nn.Module): #Not exactly sure what GPT represents (the differen
         super().__init__()
         self.config = config
 
-        self.avgpool = nn.AdaptiveAvgPool2d((self.config.vert_anchors, self.config.horz_anchors))
+        self.avgpool = nn.AdaptiveAvgPool2d((config.vert_anchors, config.horz_anchors)) #changed from self.config.anchors - due to error
         
         self.image_encoder = ImageCNN(512, normalize=True)
         self.lidar_encoder = LidarEncoder(num_classes=512, in_channels=2)
