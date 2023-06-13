@@ -26,7 +26,8 @@ import math
 from tools import gen_dx_bx, cumsum_trick, QuickCumsum #take in these functions from the tools.py file
                                                         #gen_dx_bx gives the grid spacings for the semantic grid produced
                                                         #cumsum_trick - this is used in the BEV pooling step-as described in LSS paper
-                                                        #QuickCumSum - also has to do with cumulative sum for pooling (will need to see about how this may be replaced
+                                                        #QuickCumSum - also has to do with cumulative sum for pooling (will need to see
+                                                        #how this can be replaced
                                                         #by BEVFusion pooling operation if possible)
 
 ###############################################
@@ -36,475 +37,475 @@ from tools import gen_dx_bx, cumsum_trick, QuickCumsum #take in these functions 
 #All of this stuff has to do with Transformer part that is specific to TFGrid and how Transfuser does it
 #Ignore for now - but may need to come back to see how it affects the overall architecture
 
-class ImageCNN(nn.Module): 
-    """ 
-    Encoder network for image input list.
-    Args:
-        c_dim (int): output dimension of the latent embedding
-        normalize (bool): whether the input images should be normalized
-    """
+# class ImageCNN(nn.Module): 
+#     """ 
+#     Encoder network for image input list.
+#     Args:
+#         c_dim (int): output dimension of the latent embedding
+#         normalize (bool): whether the input images should be normalized
+#     """
 
-    #This is the part of the image processing of the transformer part where it uses ResNet 34 on images
-    def __init__(self, c_dim, normalize=True):
-        super().__init__()
-        self.normalize = normalize
-        self.features = resnet34()
-        self.features.conv1 = nn.Conv2d(64, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.features.fc = nn.Sequential()
+#     #This is the part of the image processing of the transformer part where it uses ResNet 34 on images
+#     def __init__(self, c_dim, normalize=True):
+#         super().__init__()
+#         self.normalize = normalize
+#         self.features = resnet34()
+#         self.features.conv1 = nn.Conv2d(64, 64, kernel_size=7, stride=2, padding=3, bias=False)
+#         self.features.fc = nn.Sequential()
 
-    def forward(self, inputs):
-        c = 0
-        for x in inputs:
-            if self.normalize:
-                x = normalize_imagenet(x)
-            c += self.features(x)
-        return c
+#     def forward(self, inputs):
+#         c = 0
+#         for x in inputs:
+#             if self.normalize:
+#                 x = normalize_imagenet(x)
+#             c += self.features(x)
+#         return c
 
-def normalize_imagenet(x):
-    """ Normalize input images according to ImageNet standards.
-    Args:
-        x (tensor): input images
-    """
-    x = x.clone()
-    x[:, 0] = (x[:, 0] - 0.485) / 0.229
-    x[:, 1] = (x[:, 1] - 0.456) / 0.224
-    x[:, 2] = (x[:, 2] - 0.406) / 0.225
-    return x
+# def normalize_imagenet(x):
+#     """ Normalize input images according to ImageNet standards.
+#     Args:
+#         x (tensor): input images
+#     """
+#     x = x.clone()
+#     x[:, 0] = (x[:, 0] - 0.485) / 0.229
+#     x[:, 1] = (x[:, 1] - 0.456) / 0.224
+#     x[:, 2] = (x[:, 2] - 0.406) / 0.225
+#     return x
 
 
-class LidarEncoder(nn.Module):
-    """
-    Encoder network for LiDAR input list
-    Args:
-        num_classes: output feature dimension
-        in_channels: input channels
-    """
-    #This is the part of the image processing of the transformer part where it uses ResNet 18 on lidar features
-    def __init__(self, num_classes=512, in_channels=64):
-        super().__init__()
+# class LidarEncoder(nn.Module):
+#     """
+#     Encoder network for LiDAR input list
+#     Args:
+#         num_classes: output feature dimension
+#         in_channels: input channels
+#     """
+#     #This is the part of the image processing of the transformer part where it uses ResNet 18 on lidar features
+#     def __init__(self, num_classes=512, in_channels=64):
+#         super().__init__()
 
-        self._model = resnet18()
+#         self._model = resnet18()
         
-        self._model.fc = nn.Sequential()
-        _tmp = self._model.conv1
-        self._model.conv1 = nn.Conv2d(64, out_channels=_tmp.out_channels, 
-            kernel_size=_tmp.kernel_size, stride=_tmp.stride, padding=_tmp.padding, bias=_tmp.bias)
+#         self._model.fc = nn.Sequential()
+#         _tmp = self._model.conv1
+#         self._model.conv1 = nn.Conv2d(64, out_channels=_tmp.out_channels, 
+#             kernel_size=_tmp.kernel_size, stride=_tmp.stride, padding=_tmp.padding, bias=_tmp.bias)
 
-    def forward(self, inputs):
-        features = 0
-        for lidar_data in inputs:
-            lidar_feature = self._model(lidar_data)
-            features += lidar_feature
+#     def forward(self, inputs):
+#         features = 0
+#         for lidar_data in inputs:
+#             lidar_feature = self._model(lidar_data)
+#             features += lidar_feature
 
-        return features
-
-
-class SelfAttention(nn.Module): #this is the self attention part of the transformer architecture in the middle of the overall architecture
-    """
-    A vanilla multi-head masked self-attention layer with a projection at the end.
-    """
-
-    def __init__(self, n_embd, n_head, attn_pdrop, resid_pdrop):
-        super().__init__()
-        assert n_embd % n_head == 0
-        # key, query, value projections for all heads
-        self.key = nn.Linear(n_embd, n_embd)
-        self.query = nn.Linear(n_embd, n_embd)
-        self.value = nn.Linear(n_embd, n_embd)
-        # regularization
-        self.attn_drop = nn.Dropout(attn_pdrop)
-        self.resid_drop = nn.Dropout(resid_pdrop)
-        # output projection
-        self.proj = nn.Linear(n_embd, n_embd)
-        self.n_head = n_head
-
-    def forward(self, x):
-        B, T, C = x.size()
-
-        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-
-        # self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = F.softmax(att, dim=-1)
-        att = self.attn_drop(att)
-        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
-
-        # output projection
-        y = self.resid_drop(self.proj(y))
-        return y
+#         return features
 
 
-class Block(nn.Module):
-    """ an unassuming Transformer block """
- #Based on reading TFGrid - I think this is the bit where it gets the output feature based on the attention and the input features
- #i.e. this is where F_o = f(Att) +F_i comes into play where f is an MLP, Att is the result of the Self-attention module and F_i is the features input to Self-Attention
-    def __init__(self, n_embd, n_head, block_exp, attn_pdrop, resid_pdrop):
-        super().__init__()
-        self.ln1 = nn.LayerNorm(n_embd)
-        self.ln2 = nn.LayerNorm(n_embd)
-        self.attn = SelfAttention(n_embd, n_head, attn_pdrop, resid_pdrop)
-        self.mlp = nn.Sequential(
-            nn.Linear(n_embd, block_exp * n_embd),
-            nn.ReLU(True), # changed from GELU
-            nn.Linear(block_exp * n_embd, n_embd),
-            nn.Dropout(resid_pdrop),
-        )
+# class SelfAttention(nn.Module): #this is the self attention part of the transformer architecture in the middle of the overall architecture
+#     """
+#     A vanilla multi-head masked self-attention layer with a projection at the end.
+#     """
 
-    def forward(self, x):
-        B, T, C = x.size()
+#     def __init__(self, n_embd, n_head, attn_pdrop, resid_pdrop):
+#         super().__init__()
+#         assert n_embd % n_head == 0
+#         # key, query, value projections for all heads
+#         self.key = nn.Linear(n_embd, n_embd)
+#         self.query = nn.Linear(n_embd, n_embd)
+#         self.value = nn.Linear(n_embd, n_embd)
+#         # regularization
+#         self.attn_drop = nn.Dropout(attn_pdrop)
+#         self.resid_drop = nn.Dropout(resid_pdrop)
+#         # output projection
+#         self.proj = nn.Linear(n_embd, n_embd)
+#         self.n_head = n_head
 
-        x = x + self.attn(self.ln1(x))
-        x = x + self.mlp(self.ln2(x))
+#     def forward(self, x):
+#         B, T, C = x.size()
 
-        return x
+#         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
+#         k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+#         q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+#         v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
 
-#Not exactly sure if we need this - but is seems this is a class for representing the overall transformer
-#where the Block as described above
-class GPT(nn.Module):
-    """  the full GPT language model, with a context size of block_size """
+#         # self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
+#         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+#         att = F.softmax(att, dim=-1)
+#         att = self.attn_drop(att)
+#         y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+#         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
 
-    def __init__(self, n_embd, n_head, block_exp, n_layer, 
-                    vert_anchors, horz_anchors, seq_len, 
-                    embd_pdrop, attn_pdrop, resid_pdrop, config):
-        super().__init__()
-        self.n_embd = n_embd
-        self.seq_len = seq_len
-        self.vert_anchors = vert_anchors
-        self.horz_anchors = horz_anchors
-        self.config = config
+#         # output projection
+#         y = self.resid_drop(self.proj(y))
+#         return y
 
-        # positional embedding parameter (learnable), image + lidar
-        self.pos_emb = nn.Parameter(torch.zeros(1, (config['n_views'] + 1) * seq_len * vert_anchors * horz_anchors, n_embd))
+
+# class Block(nn.Module):
+#     """ an unassuming Transformer block """
+#  #Based on reading TFGrid - I think this is the bit where it gets the output feature based on the attention and the input features
+#  #i.e. this is where F_o = f(Att) +F_i comes into play where f is an MLP, Att is the result of the Self-attention module and F_i is the features input to Self-Attention
+#     def __init__(self, n_embd, n_head, block_exp, attn_pdrop, resid_pdrop):
+#         super().__init__()
+#         self.ln1 = nn.LayerNorm(n_embd)
+#         self.ln2 = nn.LayerNorm(n_embd)
+#         self.attn = SelfAttention(n_embd, n_head, attn_pdrop, resid_pdrop)
+#         self.mlp = nn.Sequential(
+#             nn.Linear(n_embd, block_exp * n_embd),
+#             nn.ReLU(True), # changed from GELU
+#             nn.Linear(block_exp * n_embd, n_embd),
+#             nn.Dropout(resid_pdrop),
+#         )
+
+#     def forward(self, x):
+#         B, T, C = x.size()
+
+#         x = x + self.attn(self.ln1(x))
+#         x = x + self.mlp(self.ln2(x))
+
+#         return x
+
+# #Not exactly sure if we need this - but is seems this is a class for representing the overall transformer
+# #where the Block as described above
+# class GPT(nn.Module):
+#     """  the full GPT language model, with a context size of block_size """
+
+#     def __init__(self, n_embd, n_head, block_exp, n_layer, 
+#                     vert_anchors, horz_anchors, seq_len, 
+#                     embd_pdrop, attn_pdrop, resid_pdrop, config):
+#         super().__init__()
+#         self.n_embd = n_embd
+#         self.seq_len = seq_len
+#         self.vert_anchors = vert_anchors
+#         self.horz_anchors = horz_anchors
+#         self.config = config
+
+#         # positional embedding parameter (learnable), image + lidar
+#         self.pos_emb = nn.Parameter(torch.zeros(1, (config['n_views'] + 1) * seq_len * vert_anchors * horz_anchors, n_embd))
         
-        # velocity embedding
-        self.vel_emb = nn.Linear(1, n_embd)
-        self.drop = nn.Dropout(embd_pdrop)
+#         # velocity embedding
+#         self.vel_emb = nn.Linear(1, n_embd)
+#         self.drop = nn.Dropout(embd_pdrop)
 
-        # transformer
-        self.blocks = nn.Sequential(*[Block(n_embd, n_head, 
-                        block_exp, attn_pdrop, resid_pdrop)
-                        for layer in range(n_layer)])
+#         # transformer
+#         self.blocks = nn.Sequential(*[Block(n_embd, n_head, 
+#                         block_exp, attn_pdrop, resid_pdrop)
+#                         for layer in range(n_layer)])
         
-        # decoder head
-        self.ln_f = nn.LayerNorm(n_embd)
+#         # decoder head
+#         self.ln_f = nn.LayerNorm(n_embd)
 
-        self.block_size = seq_len
-        self.apply(self._init_weights)
+#         self.block_size = seq_len
+#         self.apply(self._init_weights)
 
-    def get_block_size(self):
-        return self.block_size
+#     def get_block_size(self):
+#         return self.block_size
 
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
-            module.weight.data.normal_(mean=0.0, std=0.02)
-            if module.bias is not None:
-                module.bias.data.zero_()
-        elif isinstance(module, nn.LayerNorm):
-            module.bias.data.zero_()
-            module.weight.data.fill_(1.0)
+#     def _init_weights(self, module):
+#         if isinstance(module, nn.Linear):
+#             module.weight.data.normal_(mean=0.0, std=0.02)
+#             if module.bias is not None:
+#                 module.bias.data.zero_()
+#         elif isinstance(module, nn.LayerNorm):
+#             module.bias.data.zero_()
+#             module.weight.data.fill_(1.0)
 
-    def configure_optimizers(self):
-        # separate out all parameters to those that will and won't experience regularizing weight decay
-        decay = set()
-        no_decay = set()
-        whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv2d)
-        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.BatchNorm2d)
-        for mn, m in self.named_modules():
-            for pn, p in m.named_parameters():
-                fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
+#     def configure_optimizers(self):
+#         # separate out all parameters to those that will and won't experience regularizing weight decay
+#         decay = set()
+#         no_decay = set()
+#         whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv2d)
+#         blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.BatchNorm2d)
+#         for mn, m in self.named_modules():
+#             for pn, p in m.named_parameters():
+#                 fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
 
-                if pn.endswith('bias'):
-                    # all biases will not be decayed
-                    no_decay.add(fpn)
-                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
-                    # weights of whitelist modules will be weight decayed
-                    decay.add(fpn)
-                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
-                    # weights of blacklist modules will NOT be weight decayed
-                    no_decay.add(fpn)
+#                 if pn.endswith('bias'):
+#                     # all biases will not be decayed
+#                     no_decay.add(fpn)
+#                 elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+#                     # weights of whitelist modules will be weight decayed
+#                     decay.add(fpn)
+#                 elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+#                     # weights of blacklist modules will NOT be weight decayed
+#                     no_decay.add(fpn)
 
-        # special case the position embedding parameter in the root GPT module as not decayed
-        no_decay.add('pos_emb')
+#         # special case the position embedding parameter in the root GPT module as not decayed
+#         no_decay.add('pos_emb')
 
-        # create the pytorch optimizer object
-        param_dict = {pn: p for pn, p in self.named_parameters()}
-        optim_groups = [
-            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": 0.01},
-            {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
-        ]
+#         # create the pytorch optimizer object
+#         param_dict = {pn: p for pn, p in self.named_parameters()}
+#         optim_groups = [
+#             {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": 0.01},
+#             {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+#         ]
 
-        return optim_groups
+#         return optim_groups
 
-    def forward(self, image_tensor, lidar_tensor): #this is the forward function that runs the whole transformer block
-                                                   #image tensor and lidar tensor are the inputs
-                                                   #may need to understand exactly what B represents in terms of size of tensors - if this affects what I would use
-                                                   #if doing simple concatenation
-                                                   #not really sure what ego-velocity is or why we need it
-        """
-        Args:
-            image_tensor (tensor): B*4*seq_len, C, H, W
-            lidar_tensor (tensor): B*seq_len, C, H, W
-            velocity (tensor): ego-velocity
-        """
-        #print('0-lidar_tensor.shape: ', lidar_tensor.shape)#torch.Size([4, 64, 8, 8])        
-        #print('0-image_tensor.shape: ', image_tensor.shape)#torch.Size([4, 64, 8, 8])
-        #print('lidar_tensor.shape[2:4]: ', lidar_tensor.shape[2:4]) #torch.Size([8, 8])
+#     def forward(self, image_tensor, lidar_tensor): #this is the forward function that runs the whole transformer block
+#                                                    #image tensor and lidar tensor are the inputs
+#                                                    #may need to understand exactly what B represents in terms of size of tensors - if this affects what I would use
+#                                                    #if doing simple concatenation
+#                                                    #not really sure what ego-velocity is or why we need it
+#         """
+#         Args:
+#             image_tensor (tensor): B*4*seq_len, C, H, W
+#             lidar_tensor (tensor): B*seq_len, C, H, W
+#             velocity (tensor): ego-velocity
+#         """
+#         #print('0-lidar_tensor.shape: ', lidar_tensor.shape)#torch.Size([4, 64, 8, 8])        
+#         #print('0-image_tensor.shape: ', image_tensor.shape)#torch.Size([4, 64, 8, 8])
+#         #print('lidar_tensor.shape[2:4]: ', lidar_tensor.shape[2:4]) #torch.Size([8, 8])
 
-        bz = lidar_tensor.shape[0] // self.seq_len
-        h, w = lidar_tensor.shape[2:4]
+#         bz = lidar_tensor.shape[0] // self.seq_len
+#         h, w = lidar_tensor.shape[2:4]
         
-        # forward the image model for token embeddings
-        image_tensor = image_tensor.view(bz, self.seq_len, -1, h, w)
-        lidar_tensor = lidar_tensor.view(bz, self.seq_len, -1, h, w)
+#         # forward the image model for token embeddings
+#         image_tensor = image_tensor.view(bz, self.seq_len, -1, h, w)
+#         lidar_tensor = lidar_tensor.view(bz, self.seq_len, -1, h, w)
 
-        #print('1-lidar_tensor.shape: ', lidar_tensor.shape)#torch.Size([4, 1, 64, 8, 8])
-        #print('1-image_tensor.shape: ', image_tensor.shape)#torch.Size([4, 4, 16, 8, 8])    
+#         #print('1-lidar_tensor.shape: ', lidar_tensor.shape)#torch.Size([4, 1, 64, 8, 8])
+#         #print('1-image_tensor.shape: ', image_tensor.shape)#torch.Size([4, 4, 16, 8, 8])    
         
-        # pad token embeddings along number of tokens dimension
+#         # pad token embeddings along number of tokens dimension
 
-        token_embeddings = torch.cat([image_tensor, lidar_tensor], dim=1).permute(0,1,3,4,2).contiguous()
-        #print('token_embeddings.shape: ',token_embeddings.shape) torch.Size([4, 2, 8, 8, 64])
-        token_embeddings = token_embeddings.view(bz, -1, self.n_embd) # (B, an * T, C)
-        #print('token_embeddings.shape: ',token_embeddings.shape) torch.Size([4, 128, 64])
+#         token_embeddings = torch.cat([image_tensor, lidar_tensor], dim=1).permute(0,1,3,4,2).contiguous()
+#         #print('token_embeddings.shape: ',token_embeddings.shape) torch.Size([4, 2, 8, 8, 64])
+#         token_embeddings = token_embeddings.view(bz, -1, self.n_embd) # (B, an * T, C)
+#         #print('token_embeddings.shape: ',token_embeddings.shape) torch.Size([4, 128, 64])
         
-        # project velocity to n_embed
-        #velocity_embeddings = self.vel_emb(velocity.unsqueeze(1)) # (B, C)
+#         # project velocity to n_embed
+#         #velocity_embeddings = self.vel_emb(velocity.unsqueeze(1)) # (B, C)
 
-        # add (learnable) positional embedding and velocity embedding for all tokens
-        x = self.drop(self.pos_emb + token_embeddings) #+ velocity_embeddings.unsqueeze(1)) # (B, an * T, C)
-        #print('drop x.shape: ',x.shape) torch.Size([4, 128, 64])
+#         # add (learnable) positional embedding and velocity embedding for all tokens
+#         x = self.drop(self.pos_emb + token_embeddings) #+ velocity_embeddings.unsqueeze(1)) # (B, an * T, C)
+#         #print('drop x.shape: ',x.shape) torch.Size([4, 128, 64])
 
-        # x = self.drop(token_embeddings + velocity_embeddings.unsqueeze(1)) # (B, an * T, C)
-        x = self.blocks(x) # (B, an * T, C)
-        #print('blocks x.shape: ',x.shape) torch.Size([4, 128, 64])
+#         # x = self.drop(token_embeddings + velocity_embeddings.unsqueeze(1)) # (B, an * T, C)
+#         x = self.blocks(x) # (B, an * T, C)
+#         #print('blocks x.shape: ',x.shape) torch.Size([4, 128, 64])
 
-        x = self.ln_f(x) # (B, an * T, C)
+#         x = self.ln_f(x) # (B, an * T, C)
         
-        #print('ln_f x.shape: ',x.shape) torch.Size([4, 128, 64])
-        #x = x.view(bz, (self.config.n_views + 1) * self.seq_len, self.vert_anchors, self.horz_anchors, self.n_embd)
-        x = x.view(bz, (self.seq_len + 1) * self.seq_len, self.vert_anchors, self.horz_anchors, self.n_embd)
-        #print('x.shape: ',x.shape) torch.Size([4, 2, 8, 8, 64])
+#         #print('ln_f x.shape: ',x.shape) torch.Size([4, 128, 64])
+#         #x = x.view(bz, (self.config.n_views + 1) * self.seq_len, self.vert_anchors, self.horz_anchors, self.n_embd)
+#         x = x.view(bz, (self.seq_len + 1) * self.seq_len, self.vert_anchors, self.horz_anchors, self.n_embd)
+#         #print('x.shape: ',x.shape) torch.Size([4, 2, 8, 8, 64])
         
-        x = x.permute(0,1,4,2,3).contiguous() # same as token_embeddings
-        #torch.Size([4, 2, 64, 8, 8])
+#         x = x.permute(0,1,4,2,3).contiguous() # same as token_embeddings
+#         #torch.Size([4, 2, 64, 8, 8])
 
-        image_tensor_out = x[:, :self.seq_len, :, :, :].contiguous().view(bz * self.seq_len, -1, h, w)
-        lidar_tensor_out = x[:, self.seq_len:, :, :, :].contiguous().view(bz * self.seq_len, -1, h, w)
+#         image_tensor_out = x[:, :self.seq_len, :, :, :].contiguous().view(bz * self.seq_len, -1, h, w)
+#         lidar_tensor_out = x[:, self.seq_len:, :, :, :].contiguous().view(bz * self.seq_len, -1, h, w)
 
-        return image_tensor_out, lidar_tensor_out
+#         return image_tensor_out, lidar_tensor_out
 
 
-class Transfuser(nn.Module): #Not exactly sure what GPT represents (the difference between it and Block)
-                             #but this Transfuser class seems to be where it is then repreated across scales
-                             #and the ConvTranspose operations are applied
-    """
-    Multi-scale Fusion Transformer for image + LiDAR feature fusion
-    """
+# class Transfuser(nn.Module): #Not exactly sure what GPT represents (the difference between it and Block)
+#                              #but this Transfuser class seems to be where it is then repreated across scales
+#                              #and the ConvTranspose operations are applied
+#     """
+#     Multi-scale Fusion Transformer for image + LiDAR feature fusion
+#     """
 
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        #changed from self.config.anchors - due to error - issue when calling attribute with . better tto use key name
-        #also below in all transformer 1,2,3,4 calls
-        self.avgpool = nn.AdaptiveAvgPool2d((config['vert_anchors'], config['horz_anchors'])) 
+#     def __init__(self, config):
+#         super().__init__()
+#         self.config = config
+#         #changed from self.config.anchors - due to error - issue when calling attribute with . better tto use key name
+#         #also below in all transformer 1,2,3,4 calls
+#         self.avgpool = nn.AdaptiveAvgPool2d((config['vert_anchors'], config['horz_anchors'])) 
         
-        self.image_encoder = ImageCNN(512, normalize=True)
-        self.lidar_encoder = LidarEncoder(num_classes=512, in_channels=2)
+#         self.image_encoder = ImageCNN(512, normalize=True)
+#         self.lidar_encoder = LidarEncoder(num_classes=512, in_channels=2)
 
-        self.transformer1 = GPT(n_embd=64,
-                            n_head=config['n_head'], 
-                            block_exp=config['block_exp'], 
-                            n_layer=config['n_layer'], 
-                            vert_anchors=config['vert_anchors'], 
-                            horz_anchors=config['horz_anchors'], 
-                            seq_len=config['seq_len'], 
-                            embd_pdrop=config['embd_pdrop'], 
-                            attn_pdrop=config['attn_pdrop'], 
-                            resid_pdrop=config['resid_pdrop'],
-                            config=config)
-        self.transformer2 = GPT(n_embd=128,
-                            n_head=config['n_head'], 
-                            block_exp=config['block_exp'], 
-                            n_layer=config['n_layer'], 
-                            vert_anchors=config['vert_anchors'], 
-                            horz_anchors=config['horz_anchors'], 
-                            seq_len=config['seq_len'], 
-                            embd_pdrop=config['embd_pdrop'], 
-                            attn_pdrop=config['attn_pdrop'], 
-                            resid_pdrop=config['resid_pdrop'],
-                            config=config)
-        self.transformer3 = GPT(n_embd=256,
-                            n_head=config['n_head'], 
-                            block_exp=config['block_exp'], 
-                            n_layer=config['n_layer'], 
-                            vert_anchors=config['vert_anchors'], 
-                            horz_anchors=config['horz_anchors'], 
-                            seq_len=config['seq_len'], 
-                            embd_pdrop=config['embd_pdrop'], 
-                            attn_pdrop=config['attn_pdrop'], 
-                            resid_pdrop=config['resid_pdrop'],
-                            config=config)
-        self.transformer4 = GPT(n_embd=512,
-                            n_head=config['n_head'], 
-                            block_exp=config['block_exp'], 
-                            n_layer=config['n_layer'], 
-                            vert_anchors=config['vert_anchors'], 
-                            horz_anchors=config['horz_anchors'], 
-                            seq_len=config['seq_len'], 
-                            embd_pdrop=config['embd_pdrop'], 
-                            attn_pdrop=config['attn_pdrop'], 
-                            resid_pdrop=config['resid_pdrop'],
-                            config=config)
+#         self.transformer1 = GPT(n_embd=64,
+#                             n_head=config['n_head'], 
+#                             block_exp=config['block_exp'], 
+#                             n_layer=config['n_layer'], 
+#                             vert_anchors=config['vert_anchors'], 
+#                             horz_anchors=config['horz_anchors'], 
+#                             seq_len=config['seq_len'], 
+#                             embd_pdrop=config['embd_pdrop'], 
+#                             attn_pdrop=config['attn_pdrop'], 
+#                             resid_pdrop=config['resid_pdrop'],
+#                             config=config)
+#         self.transformer2 = GPT(n_embd=128,
+#                             n_head=config['n_head'], 
+#                             block_exp=config['block_exp'], 
+#                             n_layer=config['n_layer'], 
+#                             vert_anchors=config['vert_anchors'], 
+#                             horz_anchors=config['horz_anchors'], 
+#                             seq_len=config['seq_len'], 
+#                             embd_pdrop=config['embd_pdrop'], 
+#                             attn_pdrop=config['attn_pdrop'], 
+#                             resid_pdrop=config['resid_pdrop'],
+#                             config=config)
+#         self.transformer3 = GPT(n_embd=256,
+#                             n_head=config['n_head'], 
+#                             block_exp=config['block_exp'], 
+#                             n_layer=config['n_layer'], 
+#                             vert_anchors=config['vert_anchors'], 
+#                             horz_anchors=config['horz_anchors'], 
+#                             seq_len=config['seq_len'], 
+#                             embd_pdrop=config['embd_pdrop'], 
+#                             attn_pdrop=config['attn_pdrop'], 
+#                             resid_pdrop=config['resid_pdrop'],
+#                             config=config)
+#         self.transformer4 = GPT(n_embd=512,
+#                             n_head=config['n_head'], 
+#                             block_exp=config['block_exp'], 
+#                             n_layer=config['n_layer'], 
+#                             vert_anchors=config['vert_anchors'], 
+#                             horz_anchors=config['horz_anchors'], 
+#                             seq_len=config['seq_len'], 
+#                             embd_pdrop=config['embd_pdrop'], 
+#                             attn_pdrop=config['attn_pdrop'], 
+#                             resid_pdrop=config['resid_pdrop'],
+#                             config=config)
 
-        self.up1 = nn.ConvTranspose2d(in_channels=64,
-                                    out_channels=64,
-                                    kernel_size =3,
-                                    stride=4
-                                    )
+#         self.up1 = nn.ConvTranspose2d(in_channels=64,
+#                                     out_channels=64,
+#                                     kernel_size =3,
+#                                     stride=4
+#                                     )
 
-        self.up2 = nn.ConvTranspose2d(in_channels=128,
-                                    out_channels=128,
-                                    kernel_size =3,
-                                    stride=8
-                                    )              
-        self.up3 = nn.ConvTranspose2d(in_channels=256,
-                                    out_channels=256,
-                                    kernel_size =3,
-                                    stride=16
-                                    )   
-        self.up4 = nn.ConvTranspose2d(in_channels=512,
-                                    out_channels=512,
-                                    kernel_size =3,
-                                    stride=32
-                                    )    
+#         self.up2 = nn.ConvTranspose2d(in_channels=128,
+#                                     out_channels=128,
+#                                     kernel_size =3,
+#                                     stride=8
+#                                     )              
+#         self.up3 = nn.ConvTranspose2d(in_channels=256,
+#                                     out_channels=256,
+#                                     kernel_size =3,
+#                                     stride=16
+#                                     )   
+#         self.up4 = nn.ConvTranspose2d(in_channels=512,
+#                                     out_channels=512,
+#                                     kernel_size =3,
+#                                     stride=32
+#                                     )    
 
-        self.inChannels = 1920
-        self.concat_conv = nn.Sequential(
-            nn.Conv2d(self.inChannels, self.inChannels, kernel_size=3, padding=(1,1)),
-            nn.BatchNorm2d(self.inChannels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(self.inChannels, self.inChannels, kernel_size=3, padding=(1,1)),
-            nn.BatchNorm2d(self.inChannels),
-            nn.ReLU(inplace=True)
-        )                                                                                             
+#         self.inChannels = 1920
+#         self.concat_conv = nn.Sequential(
+#             nn.Conv2d(self.inChannels, self.inChannels, kernel_size=3, padding=(1,1)),
+#             nn.BatchNorm2d(self.inChannels),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(self.inChannels, self.inChannels, kernel_size=3, padding=(1,1)),
+#             nn.BatchNorm2d(self.inChannels),
+#             nn.ReLU(inplace=True)
+#         )                                                                                             
 
         
-    def forward(self, image_list, lidar_list): #we then have the forward function to run all this forward and get the output fused_features 
-                                               #from the overall transformer part of the architecture - above we have it set up so there are 4 transformers
-                                               #in the models_2T file it is very very similar only there are just 2 transformers in the above part and that changes some sizes
-        '''
-        Image + LiDAR feature fusion using transformers
-        Args:
-            image_list (list): list of input images
-            lidar_list (list): list of input LiDAR BEV
-            velocity (tensor): input velocity from speedometer
-        '''
-        if self.image_encoder.normalize:
-            image_list = [normalize_imagenet(image_input) for image_input in image_list]
-        #len(image_list) #4
-        #image_list[0].shape) #torch.Size([64, 256, 256])
+#     def forward(self, image_list, lidar_list): #we then have the forward function to run all this forward and get the output fused_features 
+#                                                #from the overall transformer part of the architecture - above we have it set up so there are 4 transformers
+#                                                #in the models_2T file it is very very similar only there are just 2 transformers in the above part and that changes some sizes
+#         '''
+#         Image + LiDAR feature fusion using transformers
+#         Args:
+#             image_list (list): list of input images
+#             lidar_list (list): list of input LiDAR BEV
+#             velocity (tensor): input velocity from speedometer
+#         '''
+#         if self.image_encoder.normalize:
+#             image_list = [normalize_imagenet(image_input) for image_input in image_list]
+#         #len(image_list) #4
+#         #image_list[0].shape) #torch.Size([64, 256, 256])
 
-        bz, lidar_channel, h, w = lidar_list.shape
-        img_channel = image_list[0].shape[0]           
-        self.config.n_views = len(image_list) // self.config.seq_len
+#         bz, lidar_channel, h, w = lidar_list.shape
+#         img_channel = image_list[0].shape[0]           
+#         self.config.n_views = len(image_list) // self.config.seq_len
 
-        image_tensor = torch.stack(image_list, dim=1).view(bz * self.config.seq_len, img_channel, h, w)
-        lidar_tensor = torch.stack(list(lidar_list), dim=1).view(bz * self.config.seq_len, lidar_channel, h, w)
+#         image_tensor = torch.stack(image_list, dim=1).view(bz * self.config.seq_len, img_channel, h, w)
+#         lidar_tensor = torch.stack(list(lidar_list), dim=1).view(bz * self.config.seq_len, lidar_channel, h, w)
 
-        #image_tensor.shape)#torch.Size([4, 64, 256, 256])
-        #lidar_tensor.shape)#torch.Size([4, 64, 256, 256])
+#         #image_tensor.shape)#torch.Size([4, 64, 256, 256])
+#         #lidar_tensor.shape)#torch.Size([4, 64, 256, 256])
 
-        image_features = self.image_encoder.features.conv1(image_tensor)
-        image_features = self.image_encoder.features.bn1(image_features)
-        image_features = self.image_encoder.features.relu(image_features)
-        image_features = self.image_encoder.features.maxpool(image_features)
-        lidar_features = self.lidar_encoder._model.conv1(lidar_tensor)
-        lidar_features = self.lidar_encoder._model.bn1(lidar_features)
-        lidar_features = self.lidar_encoder._model.relu(lidar_features)
-        lidar_features = self.lidar_encoder._model.maxpool(lidar_features)
+#         image_features = self.image_encoder.features.conv1(image_tensor)
+#         image_features = self.image_encoder.features.bn1(image_features)
+#         image_features = self.image_encoder.features.relu(image_features)
+#         image_features = self.image_encoder.features.maxpool(image_features)
+#         lidar_features = self.lidar_encoder._model.conv1(lidar_tensor)
+#         lidar_features = self.lidar_encoder._model.bn1(lidar_features)
+#         lidar_features = self.lidar_encoder._model.relu(lidar_features)
+#         lidar_features = self.lidar_encoder._model.maxpool(lidar_features)
 
-        image_features = self.image_encoder.features.layer1(image_features)
-        lidar_features = self.lidar_encoder._model.layer1(lidar_features)
+#         image_features = self.image_encoder.features.layer1(image_features)
+#         lidar_features = self.lidar_encoder._model.layer1(lidar_features)
 
-        #print('l-image_features: ',image_features.shape) torch.Size([4, 64, 64, 64])
-        #print('l-lidar_features: ',lidar_features.shape) torch.Size([4, 64, 64, 64])
-        # fusion at (B, 64, 64, 64)
-        image_embd_layer1 = self.avgpool(image_features)
-        lidar_embd_layer1 = self.avgpool(lidar_features)
-        image_features_layer1, lidar_features_layer1 = self.transformer1(image_embd_layer1, lidar_embd_layer1)
-        image_features_layer1 = F.interpolate(image_features_layer1, scale_factor=8, mode='bilinear')
-        lidar_features_layer1 = F.interpolate(lidar_features_layer1, scale_factor=8, mode='bilinear')
-        image_features = image_features + image_features_layer1
-        lidar_features = lidar_features + lidar_features_layer1
+#         #print('l-image_features: ',image_features.shape) torch.Size([4, 64, 64, 64])
+#         #print('l-lidar_features: ',lidar_features.shape) torch.Size([4, 64, 64, 64])
+#         # fusion at (B, 64, 64, 64)
+#         image_embd_layer1 = self.avgpool(image_features)
+#         lidar_embd_layer1 = self.avgpool(lidar_features)
+#         image_features_layer1, lidar_features_layer1 = self.transformer1(image_embd_layer1, lidar_embd_layer1)
+#         image_features_layer1 = F.interpolate(image_features_layer1, scale_factor=8, mode='bilinear')
+#         lidar_features_layer1 = F.interpolate(lidar_features_layer1, scale_factor=8, mode='bilinear')
+#         image_features = image_features + image_features_layer1
+#         lidar_features = lidar_features + lidar_features_layer1
 
-        #print('1-image_features: ',image_features.shape)
-        #print('1-lidar_features: ',lidar_features.shape) torch.Size([4, 64, 64, 64])
-        ## add deconv
+#         #print('1-image_features: ',image_features.shape)
+#         #print('1-lidar_features: ',lidar_features.shape) torch.Size([4, 64, 64, 64])
+#         ## add deconv
 
-        deConv1Img = self.up1(image_features, output_size = torch.Size([bz,img_channel, 256, 256]))
-        deConv1Points = self.up1(lidar_features, output_size = torch.Size([bz,lidar_channel, 256, 256]))
+#         deConv1Img = self.up1(image_features, output_size = torch.Size([bz,img_channel, 256, 256]))
+#         deConv1Points = self.up1(lidar_features, output_size = torch.Size([bz,lidar_channel, 256, 256]))
 
-        image_features = self.image_encoder.features.layer2(image_features)
-        lidar_features = self.lidar_encoder._model.layer2(lidar_features)
-        # fusion at (B, 128, 32, 32)
-        image_embd_layer2 = self.avgpool(image_features)
-        lidar_embd_layer2 = self.avgpool(lidar_features)
-        image_features_layer2, lidar_features_layer2 = self.transformer2(image_embd_layer2, lidar_embd_layer2)
-        image_features_layer2 = F.interpolate(image_features_layer2, scale_factor=4, mode='bilinear')
-        lidar_features_layer2 = F.interpolate(lidar_features_layer2, scale_factor=4, mode='bilinear')
-        image_features = image_features + image_features_layer2
-        lidar_features = lidar_features + lidar_features_layer2
+#         image_features = self.image_encoder.features.layer2(image_features)
+#         lidar_features = self.lidar_encoder._model.layer2(lidar_features)
+#         # fusion at (B, 128, 32, 32)
+#         image_embd_layer2 = self.avgpool(image_features)
+#         lidar_embd_layer2 = self.avgpool(lidar_features)
+#         image_features_layer2, lidar_features_layer2 = self.transformer2(image_embd_layer2, lidar_embd_layer2)
+#         image_features_layer2 = F.interpolate(image_features_layer2, scale_factor=4, mode='bilinear')
+#         lidar_features_layer2 = F.interpolate(lidar_features_layer2, scale_factor=4, mode='bilinear')
+#         image_features = image_features + image_features_layer2
+#         lidar_features = lidar_features + lidar_features_layer2
 
-        #print('2-image_features: ',image_features.shape)
-        #print('2-lidar_features: ',lidar_features.shape)torch.Size([4, 128, 32, 32])
+#         #print('2-image_features: ',image_features.shape)
+#         #print('2-lidar_features: ',lidar_features.shape)torch.Size([4, 128, 32, 32])
 
-        deConv2Img = self.up2(image_features, output_size = torch.Size([bz,img_channel, 256, 256]))
-        deConv2Points = self.up2(lidar_features, output_size = torch.Size([bz,lidar_channel, 256, 256]))
+#         deConv2Img = self.up2(image_features, output_size = torch.Size([bz,img_channel, 256, 256]))
+#         deConv2Points = self.up2(lidar_features, output_size = torch.Size([bz,lidar_channel, 256, 256]))
 
-        image_features = self.image_encoder.features.layer3(image_features)
-        lidar_features = self.lidar_encoder._model.layer3(lidar_features)
-        # fusion at (B, 256, 16, 16)
-        image_embd_layer3 = self.avgpool(image_features)
-        lidar_embd_layer3 = self.avgpool(lidar_features)
-        image_features_layer3, lidar_features_layer3 = self.transformer3(image_embd_layer3, lidar_embd_layer3)
-        image_features_layer3 = F.interpolate(image_features_layer3, scale_factor=2, mode='bilinear')
-        lidar_features_layer3 = F.interpolate(lidar_features_layer3, scale_factor=2, mode='bilinear')
-        image_features = image_features + image_features_layer3
-        lidar_features = lidar_features + lidar_features_layer3
+#         image_features = self.image_encoder.features.layer3(image_features)
+#         lidar_features = self.lidar_encoder._model.layer3(lidar_features)
+#         # fusion at (B, 256, 16, 16)
+#         image_embd_layer3 = self.avgpool(image_features)
+#         lidar_embd_layer3 = self.avgpool(lidar_features)
+#         image_features_layer3, lidar_features_layer3 = self.transformer3(image_embd_layer3, lidar_embd_layer3)
+#         image_features_layer3 = F.interpolate(image_features_layer3, scale_factor=2, mode='bilinear')
+#         lidar_features_layer3 = F.interpolate(lidar_features_layer3, scale_factor=2, mode='bilinear')
+#         image_features = image_features + image_features_layer3
+#         lidar_features = lidar_features + lidar_features_layer3
 
-        #print('3-image_features: ',image_features.shape)
-        #print('3-lidar_features: ',lidar_features.shape)torch.Size([4, 256, 16, 16])
+#         #print('3-image_features: ',image_features.shape)
+#         #print('3-lidar_features: ',lidar_features.shape)torch.Size([4, 256, 16, 16])
 
-        deConv3Img = self.up3(image_features, output_size = torch.Size([bz,img_channel, 256, 256]))
-        deConv3Points = self.up3(lidar_features, output_size = torch.Size([bz,lidar_channel, 256, 256]))
+#         deConv3Img = self.up3(image_features, output_size = torch.Size([bz,img_channel, 256, 256]))
+#         deConv3Points = self.up3(lidar_features, output_size = torch.Size([bz,lidar_channel, 256, 256]))
 
-        image_features = self.image_encoder.features.layer4(image_features)
-        lidar_features = self.lidar_encoder._model.layer4(lidar_features)
-        # fusion at (B, 512, 8, 8)
-        image_embd_layer4 = self.avgpool(image_features)
-        lidar_embd_layer4 = self.avgpool(lidar_features)
-        image_features_layer4, lidar_features_layer4 = self.transformer4(image_embd_layer4, lidar_embd_layer4)
-        image_features = image_features + image_features_layer4
-        lidar_features = lidar_features + lidar_features_layer4
+#         image_features = self.image_encoder.features.layer4(image_features)
+#         lidar_features = self.lidar_encoder._model.layer4(lidar_features)
+#         # fusion at (B, 512, 8, 8)
+#         image_embd_layer4 = self.avgpool(image_features)
+#         lidar_embd_layer4 = self.avgpool(lidar_features)
+#         image_features_layer4, lidar_features_layer4 = self.transformer4(image_embd_layer4, lidar_embd_layer4)
+#         image_features = image_features + image_features_layer4
+#         lidar_features = lidar_features + lidar_features_layer4
 
-        #print('4-image_features: ',image_features.shape)
-        #print('4-lidar_features: ',lidar_features.shape) torch.Size([4, 512, 8, 8])
+#         #print('4-image_features: ',image_features.shape)
+#         #print('4-lidar_features: ',lidar_features.shape) torch.Size([4, 512, 8, 8])
 
-        deConv4Img = self.up4(image_features, output_size = torch.Size([bz,img_channel, 256, 256]))
-        deConv4Points = self.up4(lidar_features, output_size = torch.Size([bz,lidar_channel, 256, 256]))
+#         deConv4Img = self.up4(image_features, output_size = torch.Size([bz,img_channel, 256, 256]))
+#         deConv4Points = self.up4(lidar_features, output_size = torch.Size([bz,lidar_channel, 256, 256]))
 
-        Img_fused_features = torch.cat([deConv1Img, deConv2Img,deConv3Img,deConv4Img], dim=1)
-        Points_fused_features = torch.cat([deConv1Points, deConv2Points,deConv3Points,deConv4Points], dim=1)
+#         Img_fused_features = torch.cat([deConv1Img, deConv2Img,deConv3Img,deConv4Img], dim=1)
+#         Points_fused_features = torch.cat([deConv1Points, deConv2Points,deConv3Points,deConv4Points], dim=1)
 
-        fused_features  = torch.cat([Img_fused_features, Points_fused_features], dim=1)
+#         fused_features  = torch.cat([Img_fused_features, Points_fused_features], dim=1)
         
-        fused_features = self.concat_conv(fused_features)
+#         fused_features = self.concat_conv(fused_features)
 
-        return fused_features
+#         return fused_features
 
 
 
@@ -512,7 +513,7 @@ class Transfuser(nn.Module): #Not exactly sure what GPT represents (the differen
 ################ point pillars ################
 ###############################################
 
-#NB THIS IS BASED ON THE POINTPILLARS PAPER - NEED TO UNDERSTDN THIS PROPERLY
+#NB THIS IS BASED ON THE POINTPILLARS PAPER - NEED TO UNDERSTAND THIS PROPERLY
 
 class Empty(torch.nn.Module): #setting up an overall Empty class
     def __init__(self, *args, **kwargs):
@@ -918,9 +919,10 @@ class BevEncode(nn.Module): #This class is used for the creation of BEV semantic
 
 #This is where it all comes together - we instantiate this class when we call compile_model() below and then this is our end-to-end model with everything
 #that we then go about training
+#NOTE: Removed tf_config as this would not be relevant to pass if not using a transformer
 
 class LPT(nn.Module):
-    def __init__(self, grid_conf, data_aug_conf, outC,pp_config,tf_config):
+    def __init__(self, grid_conf, data_aug_conf, outC,pp_config):
         super(LPT, self).__init__()
         self.grid_conf = grid_conf #this will come from the config file - this will govern how the final semantic grid is set up
         self.data_aug_conf = data_aug_conf #this will come from the config file and will determine how data augmentation is done
@@ -950,7 +952,7 @@ class LPT(nn.Module):
 
         self.pointpillars = PillarFeatures(pp_config) #instantiate PillarFeatures class
 
-        self.transfuser = Transfuser(tf_config) #instantiate transfuser class - I WILL NOT NEED THIS IF NOT USING TRANSFORMERS
+        #self.transfuser = Transfuser(tf_config) #instantiate transfuser class - I WILL NOT NEED THIS IF NOT USING TRANSFORMERS
 
         # toggle using QuickCumsum vs. autograd #NB Need to explore the alternative of how autograd is applied if not using QuickCumSum
         self.use_quickcumsum = True
@@ -1070,13 +1072,14 @@ class LPT(nn.Module):
         bsz = x.shape[0]
         pointpillars_features = self.pointpillars(voxels, coors, num_points,bsz) #this gives us the PointPillars features - in the form (batch size,C,H,W)
     
-        x = self.transfuser(x,pointpillars_features)#transfuser #THINK THIS IS WHERE WE WOULD NEED TO JUST REPLACE THE TRANSFUSER PART WITH CONCATENATION        
+        #x = self.transfuser(x,pointpillars_features)#transfuser #THINK THIS IS WHERE WE WOULD NEED TO JUST REPLACE THE TRANSFUSER PART WITH CONCATENATION 
+        x = toch.cat(x,point_pillars_features,dim=1) #want to concatenate along the channel dimension i.e C dimension
         
         x = self.bevencode(x) ### encoder to create BEV - IF WE INSTEAD PASSED CONCATENATED FEATURES RATHER THAN THE RESULT OF TRANSFORMER
                                 #IT MAY THEN BE OK TO USE BEVENCODE - BUT AGAIN - WE MAY WANT TO FIDDLE AROUND WITH THE WAY THE ENCODER-DECODER IS SET UP
         return x
 
-
-def compile_model(grid_conf, data_aug_conf, outC,cfg_pp,tf_config): #NB THIS THE FINAL ULTIMATE FUNCTION WE WANT TO RUN IN SUBSEQUENT FILES!!!
-    return LPT(grid_conf, data_aug_conf, outC,cfg_pp,tf_config) #If we want to change LPT to not have the transformer bit - may need to rename the class - so we can return 
+#Note have removed tf_config from set of passed parameters as it would no longer be relevant - changed LPT definition
+def compile_model(grid_conf, data_aug_conf, outC,cfg_pp): #NB THIS THE FINAL ULTIMATE FUNCTION WE WANT TO RUN IN SUBSEQUENT FILES!!!
+    return LPT(grid_conf, data_aug_conf, outC,cfg_pp) #If we want to change LPT to not have the transformer bit - may need to rename the class - so we can return 
                                                                 #something else
