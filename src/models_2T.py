@@ -161,7 +161,7 @@ class GPT(nn.Module):
         self.config = config
 
         # positional embedding parameter (learnable), image + lidar
-        self.pos_emb = nn.Parameter(torch.zeros(1, (self.config.n_views + 1) * seq_len * vert_anchors * horz_anchors, n_embd))
+        self.pos_emb = nn.Parameter(torch.zeros(1, (config['n_views'] + 1) * seq_len * vert_anchors * horz_anchors, n_embd))
         
         # velocity embedding
         self.vel_emb = nn.Linear(1, n_embd)
