@@ -534,7 +534,7 @@ class PFNLayer(nn.Module): #This is the Pillar Feature Net Layer - in terms of f
                  in_channels, #This is the number of input channels - (this number depends on whether we want there to be just one PFN layer or several)
                               #as below says, PointPillars only uses one - so input channels is D=9
                  out_channels, #number of output channels - this again is per layer - but if following PointPillars where there is just one layer
-                               #I believe his should equal N - to create a C,P,N sized tensor
+                               #I believe his should equal N - to create a D,P,N sized tensor
                  use_norm=True, #flag for whether to use Batch Norm or not
                  last_layer=False): #to indicate if it is the last_layer or not - if using multiple layers - set to False and then subsequently set to True below
                                     #in PillarFeatureNet class depending on how many such layers we want
@@ -790,9 +790,10 @@ class PillarFeatures(nn.Module): #overall class for applying both the PillarFeat
 ############### Lift-splat ###################
 ###############################################
 
-#This is used in the upsampling step when creating the BEV final semantic grid output - as described in Lift Splat Shoot paper
-#NB - IF I GO DOWN THE ROUTE OF CREATING MY OWN ENCODER-DECODER PART OF THE NETWORK AT THE END - THIS WILL NOT BE RELEVANT
-#OR I WILL NEED TO SWAP IT OUT FOR SOMETHING ELSE/POTENTIALLY SWAP FOR WHAT IS USED IN BEVFUSION
+#This is used in the upsampling step when creating the BEV final semantic grid output
+#However it is also used in the CamEncode part - as it relates to how Efficent Net works - still need to properly understand input and
+#output sizes for that
+#
 
 class Up(nn.Module): 
     def __init__(self, in_channels, out_channels, scale_factor=2): #scale_factor controls by how much the outout is scaled up
@@ -867,7 +868,6 @@ class CamEncode(nn.Module): #NB This is the important part of the Lift step - th
 
     def forward(self, x):
         depth, x = self.get_depth_feat(x)
-
         return x #So ultimately the result of all of this CamEncode class are the camera features c_d - which we can then feed to the "Splat" step
 
 
