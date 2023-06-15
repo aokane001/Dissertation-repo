@@ -707,9 +707,9 @@ class CamEncode(nn.Module):
     def __init__(self, D, C, downsample):
         super(CamEncode, self).__init__()
         self.D = D
-        print(f"Within CamEncode - as part of Lift Splat - size of D is:{D.size}") #print added by me
+        print(f"Within CamEncode - as part of Lift Splat - size of D is:{D}") #print added by me - D is an int
         self.C = C
-        print(f"Within CamEncode - as part of Lift Splat - size of C is:{C.size}") #print added by me
+        print(f"Within CamEncode - as part of Lift Splat - size of C is:{C}") #print added by me - C is an int
         self.trunk = EfficientNet.from_pretrained("efficientnet-b0")
 
         self.up1 = Up(320+112, 512)
