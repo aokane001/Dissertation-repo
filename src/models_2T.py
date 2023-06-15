@@ -843,7 +843,7 @@ class LPT(nn.Module):
         #print('ys: ', ys.shape)
         # D x H x W x 3
         frustum = torch.stack((xs, ys, ds), -1)
-        print(f"Within LPT class, create_frustum function- size of frustum (one per cam - expect D.H.W.3) is:{D.size}")
+        print(f"Within LPT class, create_frustum function- size of frustum (one per cam - expect D.H.W.3) is:{frustum.size}")
         return nn.Parameter(frustum, requires_grad=False)
 
     def get_geometry(self, rots, trans, intrins, post_rots, post_trans):
