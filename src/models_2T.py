@@ -42,7 +42,7 @@ class ImageCNN(nn.Module):
             if self.normalize:
                 x = normalize_imagenet(x)
             c += self.features(x)
-        print(f"ImageCNN - retuen value of c:{}",c)
+        print(f"ImageCNN - retuen value of c:{c}")
         return c
 
 def normalize_imagenet(x):
@@ -143,7 +143,7 @@ class Block(nn.Module):
 
         x = x + self.attn(self.ln1(x))
         x = x + self.mlp(self.ln2(x))
-        print(f"Forward pass of Block class - size of tensor returned:{}",x.size)
+        print(f"Forward pass of Block class - size of tensor returned:{x.size}")
         return x
 
 
@@ -274,7 +274,7 @@ class GPT(nn.Module):
         image_tensor_out = x[:, :self.seq_len, :, :, :].contiguous().view(bz * self.seq_len, -1, h, w)
         lidar_tensor_out = x[:, self.seq_len:, :, :, :].contiguous().view(bz * self.seq_len, -1, h, w)
         #print added by me
-        print(f"GPT.forward returns image_tensor_outsize:{} and lidar_tensor_out of size:{}",image_tensor_out.size, lidar_tensor_out.size)
+        print(f"GPT.forward returns image_tensor_outsize:{image_tensor_out.size} and lidar_tensor_out of size:{lidar_tensor_out.size}")
         return image_tensor_out, lidar_tensor_out
 
 
@@ -414,8 +414,8 @@ class Transfuser(nn.Module):
         fused_features  = torch.cat([Img_fused_features, Points_fused_features], dim=1)
         
         fused_features = self.concat_conv(fused_features)
-        print(f"final output-fused features-of Transfuser forward pass is of size:{}",fused_features.size)
-        print(f"Number of feature channels should match number of input channels to be expected for input to BEVEncode")
+        print(f"final output-fused features-of Transfuser forward pass is of size:{fused_features.size}")
+        print("Number of feature channels should match number of input channels to be expected for input to BEVEncode")
         return fused_features
 
 
@@ -472,10 +472,10 @@ class PFNLayer(nn.Module):
         x = self.linear(inputs)
         x = self.norm(x.permute(0, 2, 1).contiguous()).permute(0, 2, 1).contiguous()
         x = F.relu(x)
-        print(f"In forward pass of PFNLayer - before max step - tensor of size C,P,N is of size:{}",x.size)
+        print(f"In forward pass of PFNLayer - before max step - tensor of size C,P,N is of size:{x.size}")
 
         x_max = torch.max(x, dim=1, keepdim=True)[0]
-        print(f"In forward pass of PFNLayer - after doing max over - tensor of size C,P is of size:{}",x.size)
+        print(f"In forward pass of PFNLayer - after doing max over - tensor of size C,P is of size:{x.size}")
 
         if self.last_vfe:
             return x_max
@@ -581,7 +581,7 @@ class PointPillarsScatter(nn.Module):
         super().__init__()
         self.name = 'PointPillarsScatter'
         self.output_shape = output_shape
-        print(f"In PointPillars Scatter - output size - which should be batch_size,C,H,W is:{}",self.output_shape)
+        print(f"In PointPillars Scatter - output size - which should be batch_size,C,H,W is:{self.output_shape}")
         self.ny = output_shape[2]
         self.nx = output_shape[3]
         self.nchannels = num_input_features
@@ -614,7 +614,7 @@ class PointPillarsScatter(nn.Module):
 
         # Undo the column stacking to final 4-dim tensor
         batch_canvas = batch_canvas.view(batch_size, self.nchannels, self.ny, self.nx)
-        print(f"In PointPillars Scatter - batch_canvas size - which should be batch_size,C,H,W is:{}",batch_canvas.size)
+        print(f"In PointPillars Scatter - batch_canvas size - which should be batch_size,C,H,W is:{batch_canvas.size}")
 
         return batch_canvas
 
@@ -673,7 +673,7 @@ class PillarFeatures(nn.Module):
         
         spatial_features = self.middle_feature_extractor(voxel_features, coors, bsz)#self.cfg['batch_size']
         ### spatial_features (pseudo image based from Pillar features)
-        print(f"In Pillar Features - spatial_features size, which is the final result of all PointPillars steps:{}",spatial_features.size)
+        print(f"In Pillar Features - spatial_features size, which is the final result of all PointPillars steps:{spatial_features.size}")
 
         return spatial_features
 
@@ -707,9 +707,9 @@ class CamEncode(nn.Module):
     def __init__(self, D, C, downsample):
         super(CamEncode, self).__init__()
         self.D = D
-        print(f"Within CamEncode - as part of Lift Splat - size of D is:{}",D.size) #print added by me
+        print(f"Within CamEncode - as part of Lift Splat - size of D is:{D.size}") #print added by me
         self.C = C
-        print(f"Within CamEncode - as part of Lift Splat - size of C is:{}",C.size) #print added by me
+        print(f"Within CamEncode - as part of Lift Splat - size of C is:{C.size}") #print added by me
         self.trunk = EfficientNet.from_pretrained("efficientnet-b0")
 
         self.up1 = Up(320+112, 512)
@@ -755,14 +755,14 @@ class CamEncode(nn.Module):
 
     def forward(self, x):
         depth, x = self.get_depth_feat(x)
-        print(f"Size of tensor returned by forward pass of cam_encode:{}"x.size) #print added by me
+        print(f"Size of tensor returned by forward pass of cam_encode:{x.size}") #print added by me
         return x
 
 
 class BevEncode(nn.Module):
     def __init__(self, inC, outC):
         super(BevEncode, self).__init__()
-        print(f"In init of BevEncode - number of in channels expetced for BevEncode{}",inC) #print added by me
+        print(f"In init of BevEncode - number of in channels expetced for BevEncode{inC}") #print added by me
         trunk = resnet18(pretrained=False, zero_init_residual=True)
         self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
                                bias=False)
@@ -794,7 +794,7 @@ class BevEncode(nn.Module):
 
         x = self.up1(x, x1)
         x = self.up2(x)
-        print(f"Resulting size coming out og BEVEncode{}",x.size)
+        print(f"Resulting size coming out of BEVEncode{x.size}")
         return x
 
 
@@ -843,7 +843,7 @@ class LPT(nn.Module):
         #print('ys: ', ys.shape)
         # D x H x W x 3
         frustum = torch.stack((xs, ys, ds), -1)
-        print(f"Within LPT class, create_frustum function- size of frustum (one per cam - expect D.H.W.3) is:{}",D.size)
+        print(f"Within LPT class, create_frustum function- size of frustum (one per cam - expect D.H.W.3) is:{D.size}")
         return nn.Parameter(frustum, requires_grad=False)
 
     def get_geometry(self, rots, trans, intrins, post_rots, post_trans):
@@ -877,7 +877,7 @@ class LPT(nn.Module):
         x = self.camencode(x)
         x = x.view(B, N, self.camC, self.D, imH//self.downsample, imW//self.downsample)
         x = x.permute(0, 1, 3, 4, 5, 2)
-        print(f"Resulting tensor from get_cam_feats if of size:{}",x.size)
+        print(f"Resulting tensor from get_cam_feats if of size:{x.size}")
         return x
 
     def voxel_pooling(self, geom_feats, x):
@@ -922,7 +922,7 @@ class LPT(nn.Module):
         # collapse Z
         final = torch.cat(final.unbind(dim=2), 1) ### unbind removes tensor 2nd dimension (z) then dimension B*C*X*Y
                                                                                                                ##H*W?
-        print(f"Result of voxel_pooling should be a tensor of size batch_sizexCxHxW (or XxY?) - final.size is:{}",final.size)
+        print(f"Result of voxel_pooling should be a tensor of size batch_sizexCxHxW (or XxY?) - final.size is:{final.size}")
         return final
 
     def get_voxels(self, x, rots, trans, intrins, post_rots, post_trans): ### get pillars
@@ -930,7 +930,7 @@ class LPT(nn.Module):
         x = self.get_cam_feats(x)
 
         x = self.voxel_pooling(geom, x) #### deliver tensor B*C*X*Y
-        print(f"Within get_voxels we get geom feats and get_cam_feats to pass to voxel_pooling - resulting tensor size is:{}",x.size)
+        print(f"Within get_voxels we get geom feats and get_cam_feats to pass to voxel_pooling - resulting tensor size is:{x.size}")
         return x
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans, voxels, coors, num_points):
@@ -944,7 +944,7 @@ class LPT(nn.Module):
         x = self.transfuser(x,pointpillars_features)#transfuser        
         
         x = self.bevencode(x) ### encoder to create BEV
-        print(f"LPT forward(): call get voxels, and pointpillars features - passed to transfuser, then BEV encode, final size:{}",x.size)
+        print(f"LPT forward(): call get voxels, and pointpillars features - passed to transfuser, then BEV encode, final size:{x.size}")
         return x
 
 
