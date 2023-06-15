@@ -287,32 +287,32 @@ class Transfuser(nn.Module):
         super().__init__()
         self.config = config
 
-        self.avgpool = nn.AdaptiveAvgPool2d((self.config.vert_anchors, self.config.horz_anchors))
+        self.avgpool = nn.AdaptiveAvgPool2d((config['vert_anchors'], config['horz_anchors']))
         
         self.image_encoder = ImageCNN(512, normalize=True)
         self.lidar_encoder = LidarEncoder(num_classes=512, in_channels=2)
 
         self.transformer1 = GPT(n_embd=64,
-                            n_head=config.n_head, 
-                            block_exp=config.block_exp, 
-                            n_layer=config.n_layer, 
-                            vert_anchors=config.vert_anchors, 
-                            horz_anchors=config.horz_anchors, 
-                            seq_len=config.seq_len, 
-                            embd_pdrop=config.embd_pdrop, 
-                            attn_pdrop=config.attn_pdrop, 
-                            resid_pdrop=config.resid_pdrop,
+                            n_head=config['n_head'], 
+                            block_exp=config['block_exp'], 
+                            n_layer=config['n_layer'], 
+                            vert_anchors=config['vert_anchors'], 
+                            horz_anchors=config['horz_anchors'], 
+                            seq_len=config['seq_len'], 
+                            embd_pdrop=config['embd_pdrop'], 
+                            attn_pdrop=config['attn_pdrop'], 
+                            resid_pdrop=config['resid_pdrop'],
                             config=config)
         self.transformer2 = GPT(n_embd=128,
-                            n_head=config.n_head, 
-                            block_exp=config.block_exp, 
-                            n_layer=config.n_layer, 
-                            vert_anchors=config.vert_anchors, 
-                            horz_anchors=config.horz_anchors, 
-                            seq_len=config.seq_len, 
-                            embd_pdrop=config.embd_pdrop, 
-                            attn_pdrop=config.attn_pdrop, 
-                            resid_pdrop=config.resid_pdrop,
+                            n_head=config['n_head'], 
+                            block_exp=config['block_exp'], 
+                            n_layer=config['n_layer'], 
+                            vert_anchors=config['vert_anchors'], 
+                            horz_anchors=config['horz_anchors'], 
+                            seq_len=config['seq_len'], 
+                            embd_pdrop=config['embd_pdrop'], 
+                            attn_pdrop=config['attn_pdrop'], 
+                            resid_pdrop=config['resid_pdrop'],
                             config=config)
         self.up1 = nn.ConvTranspose2d(in_channels=64,
                                     out_channels=64,
