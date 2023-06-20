@@ -17,8 +17,8 @@ import torch
 from torch import nn #need this for creating a neural network class
 import torch.nn.functional as F #this is used for functions like relu
 from efficientnet_pytorch import EfficientNet #might need to pip install this package first - will use this to get a pretrained efficient net for image backbone
-from torchvision.models.resnet import resnet18, resnet34 #these are used in TFGrid for Transformer part - may not need in our part
-
+from torchvision.models.resnet import resnet18, resnet34, resnet50 #these are used in TFGrid for Transformer part - also for BevEncode
+                                                                   #versions to create semantic grids
 import numpy as np
 import math
 
@@ -870,13 +870,13 @@ class CamEncode(nn.Module): #NB This is the important part of the Lift step - th
         depth, x = self.get_depth_feat(x)
         return x #So ultimately the result of all of this CamEncode class are the camera features c_d - which we can then feed to the "Splat" step
 
-
-class BevEncode(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
+#BevEncode_0 - this will be the ResNet 18 version
+class BevEncode_0(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
                             #either concatenation or feeding the camera and lidar features through the transformer
                             #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
                             #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
     def __init__(self, inC, outC):
-        super(BevEncode, self).__init__()
+        super(BevEncode_0, self).__init__()
 
         trunk = resnet18(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
                                                                     #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
@@ -917,6 +917,101 @@ class BevEncode(nn.Module): #This class is used for the creation of BEV semantic
 
         return x
 
+#BevEncode_1 - this will be the ResNet 34 version
+class BevEncode_1(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
+                            #either concatenation or feeding the camera and lidar features through the transformer
+                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
+                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
+    def __init__(self, inC, outC):
+        super(BevEncode_1, self).__init__()
+
+        trunk = resnet34(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
+                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
+        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        self.bn1 = trunk.bn1 #follow this with BatchNorm
+        self.relu = trunk.relu #follow this with ReLU
+
+        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
+        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
+        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
+
+        self.up1 = Up(64+256, 256, scale_factor=4) #need to figure out why the number of input channels needed is 64+256 - think it is because from ResNet 18 layer 1 has 
+                                                   #64 channels, layer 3 has 256 and when you upsample x1 you don't change the number of channels you just change the
+                                                   #dimensions of the image so it has the same height and width dimensions and 
+                                                   #can be concatenated with x3, along the channel dimension, so then the number of channels is 64+256 and we then reduce that down to 256
+                                                   #output channels after the 2 convolutions in the Up class
+        self.up2 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear',
+                              align_corners=True),
+            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
+        )
+
+    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x1 = self.layer1(x)
+        x = self.layer2(x1)
+        x = self.layer3(x)
+
+        x = self.up1(x, x1)
+        x = self.up2(x)
+
+        return x
+
+#BevEncode_2 - this will be the ResNet 50 version
+class BevEncode_2(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
+                            #either concatenation or feeding the camera and lidar features through the transformer
+                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
+                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
+    def __init__(self, inC, outC):
+        super(BevEncode_2, self).__init__()
+
+        trunk = resnet50(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
+                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
+        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        self.bn1 = trunk.bn1 #follow this with BatchNorm
+        self.relu = trunk.relu #follow this with ReLU
+
+        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
+        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
+        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
+
+        self.up1 = Up(256+1024, 1024, scale_factor=4) #need to figure out why the number of input channels needed is 64+256 - think it is because from ResNet 18 layer 1 has 
+                                                   #64 channels, layer 3 has 256 and when you upsample x1 you don't change the number of channels you just change the
+                                                   #dimensions of the image so it has the same height and width dimensions and 
+                                                   #can be concatenated with x3, along the channel dimension, so then the number of channels is 64+256 and we then reduce that down to 256
+                                                   #output channels after the 2 convolutions in the Up class
+        self.up2 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear',
+                              align_corners=True),
+            nn.Conv2d(1024, 512, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, outC, kernel_size=1, padding=0), ##number of output channels outC
+        )
+
+    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x1 = self.layer1(x)
+        x = self.layer2(x1)
+        x = self.layer3(x)
+
+        x = self.up1(x, x1)
+        x = self.up2(x)
+
+        return x
+
+    
 #This is where it all comes together - we instantiate this class when we call compile_model() below and then this is our end-to-end model with everything
 #that we then go about training
 #NOTE: Removed tf_config as this would not be relevant to pass if not using a transformer
@@ -933,6 +1028,12 @@ class LPT(nn.Module):
                                               self.grid_conf['ybound'],
                                               self.grid_conf['zbound'],
                                               )
+        #NB Need to introduce a new parameter 'encoder_mode' to determine whether resnet 18/34/50 blocks are being used in the encoder
+        #0 -> resnet18
+        #1 -> resnet34
+        #2 -> resnet50
+        encoder_mode = self.grid_conf['encoder_mode']
+        
         self.dx = nn.Parameter(dx, requires_grad=False) #set these as parameters for the neural network
         self.bx = nn.Parameter(bx, requires_grad=False)
         self.nx = nn.Parameter(nx, requires_grad=False)
@@ -945,11 +1046,21 @@ class LPT(nn.Module):
         
         # sum lift-splat features and PointPillars features
         self.inFeatures = self.camC + self.pp_config['vfe_filters'][0] #why are these summed? where is this used?
-
-        self.bevencode = BevEncode(inC=1920, outC=outC) ### outC number of output channels #why is inC equal to 1920? It is different (=384 i.e. 256+64+64? when using 2 transformers
-                                                          #see models_2t.py file - think this could be influenced by how the transformers are influencing channels
-                                                          #so if I want to use just concatenation may need to see if this affects channel depth)
-
+        
+        if encoder_mode == 0:
+            self.bevencode = BevEncode_0(inC=128, outC=outC) ### outC number of output channels - why is inC equal to 1920? 
+                                                              #It is different (=384 i.e. 256+64+64? when using 2 transformers
+                                                              #see models_2t.py file - think this could be influenced by how the 
+                                                              #transformers are influencing channels
+                                                              #so want to use just concatenation - see if this affects channel depth)
+                                                              #changed this in my code to 128 - conct along channel dim - 64+64
+        elif encoder_mode == 1:
+            self.bevencode = BevEncode_1(inC=128, outC=outC)
+        elif encoder_mode == 2:
+            self.bevencode = BevEncode_2(inC=128, outC=outC)
+        else:
+            raise ValueError("Error with encoder_mode value in grid_conf - value must be 0,1 or 2 - check config")
+        
         self.pointpillars = PillarFeatures(pp_config) #instantiate PillarFeatures class
 
         #self.transfuser = Transfuser(tf_config) #instantiate transfuser class - I WILL NOT NEED THIS IF NOT USING TRANSFORMERS
