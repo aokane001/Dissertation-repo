@@ -1184,7 +1184,7 @@ class LPT(nn.Module):
         pointpillars_features = self.pointpillars(voxels, coors, num_points,bsz) #this gives us the PointPillars features - in the form (batch size,C,H,W)
     
         #x = self.transfuser(x,pointpillars_features)#transfuser #THINK THIS IS WHERE WE WOULD NEED TO JUST REPLACE THE TRANSFUSER PART WITH CONCATENATION 
-        x = torch.cat(x,point_pillars_features,dim=1) #want to concatenate along the channel dimension i.e C dimension
+        x = torch.cat(x,pointpillars_features,dim=1) #want to concatenate along the channel dimension i.e C dimension
         
         x = self.bevencode(x) ### encoder to create BEV - IF WE INSTEAD PASSED CONCATENATED FEATURES RATHER THAN THE RESULT OF TRANSFORMER
                                 #IT MAY THEN BE OK TO USE BEVENCODE - BUT AGAIN - WE MAY WANT TO FIDDLE AROUND WITH THE WAY THE ENCODER-DECODER IS SET UP
