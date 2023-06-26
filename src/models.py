@@ -1011,6 +1011,140 @@ class BevEncode_2(nn.Module): #This class is used for the creation of BEV semant
 
         return x
 
+#BevEncode_3 - this will be the ResNet 18 version
+class BevEncode_3(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
+                            #either concatenation or feeding the camera and lidar features through the transformer
+                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
+                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
+    def __init__(self, inC, outC):
+        super(BevEncode_3, self).__init__()
+
+        trunk = resnet18(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
+                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
+        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        self.bn1 = trunk.bn1 #follow this with BatchNorm
+        self.relu = trunk.relu #follow this with ReLU
+
+        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
+        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
+        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
+
+        self.up1 = Up(64+128, 128, scale_factor=2) #try concatenating an upsampled version of x2 with x1
+        self.up2 = Up(128+256, 256, scale_factor=2) #try concatenating an upsampled version of what results from up1 with x3
+        self.up3 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear',
+                              align_corners=True),
+            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
+        )
+
+    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x1 = self.layer1(x)
+        x2 = self.layer2(x1)
+        x3 = self.layer3(x)
+
+        x = self.up1(x2, x1)
+        x = self.up2(x3,x)
+        x = self.up3(x)
+
+        return x
+
+#BevEncode_4 - this will be the ResNet 18 version
+class BevEncode_4(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
+                            #either concatenation or feeding the camera and lidar features through the transformer
+                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
+                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
+    def __init__(self, inC, outC):
+        super(BevEncode_4, self).__init__()
+
+        trunk = resnet34(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
+                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
+        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        self.bn1 = trunk.bn1 #follow this with BatchNorm
+        self.relu = trunk.relu #follow this with ReLU
+
+        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
+        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
+        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
+
+        self.up1 = Up(64+128, 128, scale_factor=2) #try concatenating an upsampled version of x2 with x1
+        self.up2 = Up(128+256, 256, scale_factor=2) #try concatenating an upsampled version of what results from up1 with x3
+        self.up3 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear',
+                              align_corners=True),
+            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
+        )
+
+    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x1 = self.layer1(x)
+        x2 = self.layer2(x1)
+        x3 = self.layer3(x)
+
+        x = self.up1(x2, x1)
+        x = self.up2(x3,x)
+        x = self.up3(x)
+
+        return x
+
+#BevEncode_5 - this will be the ResNet 18 version
+class BevEncode_5(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
+                            #either concatenation or feeding the camera and lidar features through the transformer
+                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
+                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
+    def __init__(self, inC, outC):
+        super(BevEncode_5, self).__init__()
+
+        trunk = resnet50(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
+                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
+        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        self.bn1 = trunk.bn1 #follow this with BatchNorm
+        self.relu = trunk.relu #follow this with ReLU
+
+        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
+        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
+        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
+
+        self.up1 = Up(256+512, 512, scale_factor=2) #try concatenating an upsampled version of x2 with x1
+        self.up2 = Up(512+1024, 1024, scale_factor=2) #try concatenating an upsampled version of what results from up1 with x3
+        self.up3 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear',
+                              align_corners=True),
+            nn.Conv2d(1024, 512, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, outC, kernel_size=1, padding=0), ##number of output channels outC
+        )
+
+    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x1 = self.layer1(x)
+        x2 = self.layer2(x1)
+        x3 = self.layer3(x)
+
+        x = self.up1(x2, x1)
+        x = self.up2(x3,x)
+        x = self.up3(x)
+
+        return x
     
 #This is where it all comes together - we instantiate this class when we call compile_model() below and then this is our end-to-end model with everything
 #that we then go about training
@@ -1047,19 +1181,29 @@ class LPT(nn.Module):
         # sum lift-splat features and PointPillars features
         self.inFeatures = self.camC + self.pp_config['vfe_filters'][0] #why are these summed? where is this used?
         
-        if encoder_mode == 0:
-            self.bevencode = BevEncode_0(inC=128, outC=outC) ### outC number of output channels - why is inC equal to 1920? 
+        #set up dict where keys are encoder_mode values and values point to the corresponding BevEncode class
+        #inC should be 128 after concatenating camera and lidar each with C=64, along channel dimension
+        self.bevencode = {0:BevEncode_0(inC=128, outC=outC),
+                         1:BevEncode_1(inC=128, outC=outC),
+                         2:BevEncode_2(inC=128, outC=outC),
+                         3:BevEncode_3(inC=128, outC=outC),
+                         4:BevEncode_4(inC=128, outC=outC),
+                         5:BevEncode_5(inC=128, outC=outC)}[encoder_mode]
+        
+        
+        #if encoder_mode == 0: #this was a previous way of assigning self.bevencode but dict is cleaner
+        #   self.bevencode = BevEncode_0(inC=128, outC=outC) ### outC number of output channels - why is inC equal to 1920? 
                                                               #It is different (=384 i.e. 256+64+64? when using 2 transformers
                                                               #see models_2t.py file - think this could be influenced by how the 
                                                               #transformers are influencing channels
                                                               #so want to use just concatenation - see if this affects channel depth)
                                                               #changed this in my code to 128 - conct along channel dim - 64+64
-        elif encoder_mode == 1:
-            self.bevencode = BevEncode_1(inC=128, outC=outC)
-        elif encoder_mode == 2:
-            self.bevencode = BevEncode_2(inC=128, outC=outC)
-        else:
-            raise ValueError("Error with encoder_mode value in grid_conf - value must be 0,1 or 2 - check config")
+        #elif encoder_mode == 1:
+        #   self.bevencode = BevEncode_1(inC=128, outC=outC)
+        #elif encoder_mode == 2:
+        #   self.bevencode = BevEncode_2(inC=128, outC=outC)
+        #else:
+        #   raise ValueError("Error with encoder_mode value in grid_conf - value must be 0,1 or 2 - check config")
         
         self.pointpillars = PillarFeatures(pp_config) #instantiate PillarFeatures class
 
