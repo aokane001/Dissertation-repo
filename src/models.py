@@ -1162,11 +1162,11 @@ class LPT(nn.Module):
                                               self.grid_conf['ybound'],
                                               self.grid_conf['zbound'],
                                               )
-        #NB Need to introduce a new parameter 'encoder_mode' to determine whether resnet 18/34/50 blocks are being used in the encoder
+        #NB Need to introduce a new parameter 'decoder_mode' to determine whether resnet 18/34/50 blocks are being used in the encoder
         #0 -> resnet18
         #1 -> resnet34
         #2 -> resnet50
-        encoder_mode = self.grid_conf['encoder_mode']
+        decoder_mode = self.grid_conf['decoder_mode']
         
         self.dx = nn.Parameter(dx, requires_grad=False) #set these as parameters for the neural network
         self.bx = nn.Parameter(bx, requires_grad=False)
@@ -1181,29 +1181,29 @@ class LPT(nn.Module):
         # sum lift-splat features and PointPillars features
         self.inFeatures = self.camC + self.pp_config['vfe_filters'][0] #why are these summed? where is this used?
         
-        #set up dict where keys are encoder_mode values and values point to the corresponding BevEncode class
+        #set up dict where keys are decoder_mode values and values point to the corresponding BevEncode class
         #inC should be 128 after concatenating camera and lidar each with C=64, along channel dimension
         self.bevencode = {0:BevEncode_0(inC=128, outC=outC),
                          1:BevEncode_1(inC=128, outC=outC),
                          2:BevEncode_2(inC=128, outC=outC),
                          3:BevEncode_3(inC=128, outC=outC),
                          4:BevEncode_4(inC=128, outC=outC),
-                         5:BevEncode_5(inC=128, outC=outC)}[encoder_mode]
+                         5:BevEncode_5(inC=128, outC=outC)}[decoder_mode]
         
         
-        #if encoder_mode == 0: #this was a previous way of assigning self.bevencode but dict is cleaner
+        #if decoder_mode == 0: #this was a previous way of assigning self.bevencode but dict is cleaner
         #   self.bevencode = BevEncode_0(inC=128, outC=outC) ### outC number of output channels - why is inC equal to 1920? 
                                                               #It is different (=384 i.e. 256+64+64? when using 2 transformers
                                                               #see models_2t.py file - think this could be influenced by how the 
                                                               #transformers are influencing channels
                                                               #so want to use just concatenation - see if this affects channel depth)
                                                               #changed this in my code to 128 - conct along channel dim - 64+64
-        #elif encoder_mode == 1:
+        #elif decoder_mode == 1:
         #   self.bevencode = BevEncode_1(inC=128, outC=outC)
-        #elif encoder_mode == 2:
+        #elif decoder_mode == 2:
         #   self.bevencode = BevEncode_2(inC=128, outC=outC)
         #else:
-        #   raise ValueError("Error with encoder_mode value in grid_conf - value must be 0,1 or 2 - check config")
+        #   raise ValueError("Error with decoder_mode value in grid_conf - value must be 0,1 or 2 - check config")
         
         self.pointpillars = PillarFeatures(pp_config) #instantiate PillarFeatures class
 
