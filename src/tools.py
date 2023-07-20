@@ -576,7 +576,7 @@ def zero_center(ar,ring,cropx=200,cropy=200):
     return ar
 
 
-def get_val_info(model, valloader, loss_fn, device, cfg,use_tqdm=False, is_training = False ,print_img = False ):
+def get_val_info(model, valloader, loss_fn, device, cfg,use_tqdm=False, is_training = False ,print_img = True ):
     model.eval()
     total_loss = 0.0
     total_intersect = 0.0
@@ -584,7 +584,7 @@ def get_val_info(model, valloader, loss_fn, device, cfg,use_tqdm=False, is_train
     tinf0 = 0.0
     tinf1 = 0.0
     d=0
-    img_save='/home/gusalazargomez/lpt/eval/vis_test/' ######
+    img_save='./runs/get_val_info' ######
     print('running eval...')
     loader = tqdm(valloader) if use_tqdm else valloader    
     with torch.no_grad():
@@ -621,7 +621,7 @@ def get_val_info(model, valloader, loss_fn, device, cfg,use_tqdm=False, is_train
             
             if i % 5 == 0 and print_img:###
                 
-                imname = img_save + 'test205000-trainval-'+str(i)+'-iou-'+'{:.2f}'.format(iou)+'.jpg'
+                imname = img_save +str(i)+'-iou-'+'{:.2f}'.format(iou)+'.jpg'
 
                 plot_bev(preds.sigmoid().cpu(),binimgs.cpu(),  imname,cfg['grid_conf'])
             
