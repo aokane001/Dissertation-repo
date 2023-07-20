@@ -576,7 +576,7 @@ def zero_center(ar,ring,cropx=200,cropy=200):
     return ar
 
 
-def get_val_info(model, valloader, loss_fn, device, cfg,use_tqdm=False, is_training = False ,print_img = True ):
+def get_val_info(model, valloader, loss_fn, device, cfg_pp, grid_conf,use_tqdm=False, is_training = False ,print_img = True ):
     model.eval()
     total_loss = 0.0
     total_intersect = 0.0
@@ -592,7 +592,7 @@ def get_val_info(model, valloader, loss_fn, device, cfg,use_tqdm=False, is_train
             
             allimgs, rots, trans, intrins, post_rots, post_trans, binimgs, points = batch
             
-            voxels, coors, num_points = points_to_voxel_loop(points, cfg)
+            voxels, coors, num_points = points_to_voxel_loop(points, cfg_pp)
             
             
             if is_training:
@@ -623,7 +623,7 @@ def get_val_info(model, valloader, loss_fn, device, cfg,use_tqdm=False, is_train
                 
                 imname = img_save +str(i)+'-iou-'+'{:.2f}'.format(iou)+'.jpg'
 
-                plot_bev(preds.sigmoid().cpu(),binimgs.cpu(),  imname,cfg['grid_conf'])
+                plot_bev(preds.sigmoid().cpu(),binimgs.cpu(),  imname,grid_conf)
             
 
     model.train()
