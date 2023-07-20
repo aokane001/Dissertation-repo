@@ -584,7 +584,8 @@ def get_val_info(model, valloader, loss_fn, device, cfg_pp, grid_conf,use_tqdm=F
     tinf0 = 0.0
     tinf1 = 0.0
     d=0
-    img_save='./runs/get_val_info' ######
+    img_save='./runs/get_val_info/' #NB - NEED '/' after the folder so that below savefig saves to that directory path
+                                    #when it does simple string concatenation below to get inmane
     print('running eval...')
     loader = tqdm(valloader) if use_tqdm else valloader    
     with torch.no_grad():
