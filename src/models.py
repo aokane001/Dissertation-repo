@@ -1050,7 +1050,7 @@ class BevEncode_3(nn.Module): #This class is used for the creation of BEV semant
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             #adding this for applying dropout - to try to fix overfitting
-            self.dropout = nn.Dropout(p=0.5)
+            nn.Dropout(p=0.5),
             nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
         )
 
