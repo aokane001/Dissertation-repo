@@ -508,18 +508,14 @@ class Transfuser(nn.Module): #Not exactly sure what GPT represents (the differen
         return fused_features
 
 
-
 ###############################################
 ################ point pillars ################
 ###############################################
-
-#NB THIS IS BASED ON THE POINTPILLARS PAPER - NEED TO UNDERSTAND THIS PROPERLY
-
-class Empty(torch.nn.Module): #setting up an overall Empty class
+class Empty(torch.nn.Module):
     def __init__(self, *args, **kwargs):
         super(Empty, self).__init__()
 
-    def forward(self, *args, **kwargs): #forward method for the Empty class
+    def forward(self, *args, **kwargs):
         if len(args) == 1:
             return args[0]
         elif len(args) == 0:
@@ -527,17 +523,12 @@ class Empty(torch.nn.Module): #setting up an overall Empty class
         return args
 
 
-class PFNLayer(nn.Module): #This is the Pillar Feature Net Layer - in terms of feature encoding this is the important part
-                           #after that in the PointPillars paper there is the 2D CNN backbone and then the detection head for 3D object detection
-                           #but we really just want to encode the features 
+class PFNLayer(nn.Module):
     def __init__(self,
-                 in_channels, #This is the number of input channels - (this number depends on whether we want there to be just one PFN layer or several)
-                              #as below says, PointPillars only uses one - so input channels is D=9
-                 out_channels, #number of output channels - this again is per layer - but if following PointPillars where there is just one layer
-                               #I believe his should equal N - to create a D,P,N sized tensor
-                 use_norm=True, #flag for whether to use Batch Norm or not
-                 last_layer=False): #to indicate if it is the last_layer or not - if using multiple layers - set to False and then subsequently set to True below
-                                    #in PillarFeatureNet class depending on how many such layers we want
+                 in_channels,
+                 out_channels,
+                 use_norm=True,
+                 last_layer=False):
         """
         Pillar Feature Net Layer.
         The Pillar Feature Net could be composed of a series of these layers, but the PointPillars paper results only
@@ -549,52 +540,45 @@ class PFNLayer(nn.Module): #This is the Pillar Feature Net Layer - in terms of f
         """
 
         super().__init__()
-        self.name = 'PFNLayer' #layer name
-        self.last_vfe = last_layer #bool to control if it is the last layer or not
+        self.name = 'PFNLayer'
+        self.last_vfe = last_layer
         if not self.last_vfe:
-            out_channels = out_channels // 2 #if not the last layer - set out_channels to half as Conv2D will half output size
-        self.units = out_channels #self.units is then the number of output units we want in the linear MLP layer
+            out_channels = out_channels // 2
+        self.units = out_channels
 
-        use_norm = True #assume we will generally want to use BatchNorm
+        use_norm = True
 
-        if use_norm: #since use_norm is True - this is the form the layer will take
-            self.norm = nn.BatchNorm1d(self.units,eps=1e-3, momentum=0.01) #apply BatchNorm - see PyTroch documentation for def of eps and momentum
-            self.linear = nn.Linear(in_channels, self.units,bias=False) #linear layer from input_channels to output_channels
+        if use_norm:
+            self.norm = nn.BatchNorm1d(self.units,eps=1e-3, momentum=0.01)
+            self.linear = nn.Linear(in_channels, self.units,bias=False)
         else:
-            self.norm = Empty #if use_norm is False - just use the Empty class above
-            self.linear = nn.Linear(in_channels, self.units,bias=True) #if not using use_norm=True then in the linear layer a bias is applied
+            self.norm = Empty
+            self.linear = nn.Linear(in_channels, self.units,bias=True)
 
-    def forward(self, inputs): #this defines how to pass inputs forward through this layer
+    def forward(self, inputs):
 
-        x = self.linear(inputs) #linear layer given the inputs
-        #NB this is used to permute the dimensions of the output - see PyTorch documentation for 'permute' - dimensions 1 and 2 flipped
-        #Note - contiguous is used to return a contiguous in memory tensor with the same data as self tensor/return the self tensor if already in memory
-        x = self.norm(x.permute(0, 2, 1).contiguous()).permute(0, 2, 1).contiguous() #Would be helpful to print sizes or try this with a simple example
-        x = F.relu(x) #apply relu
+        x = self.linear(inputs)
+        x = self.norm(x.permute(0, 2, 1).contiguous()).permute(0, 2, 1).contiguous()
+        x = F.relu(x)
 
-        x_max = torch.max(x, dim=1, keepdim=True)[0] #NB This is where max operation over channels is applied to get an output sensor of size C,P
-                                                     #Note when performing the max operation it will return values as index 0, indices of where these maxes occur as index 1,
-                                                     #and we want the values so access index [0]
+        x_max = torch.max(x, dim=1, keepdim=True)[0]
 
         if self.last_vfe:
-            return x_max #return just this max tensor (dimensions (C,P)) if we are at the last layer
+            return x_max
         else:
-            x_repeat = x_max.repeat(1, inputs.shape[1], 1) #else just get repeated version of the x_max tensor - repeat inputs.shape[1] number of times across a row
-            x_concatenated = torch.cat([x, x_repeat], dim=2) #concatenate it with the original x - then this gets passed to the next PFNLayer if we want multiple PFN layers
+            x_repeat = x_max.repeat(1, inputs.shape[1], 1)
+            x_concatenated = torch.cat([x, x_repeat], dim=2)
             return x_concatenated
 
 
-class PillarFeatureNet(nn.Module): #This is then a class for creating the Pillar Feature Net by stacking PFN Layers (if we had multiple - for PointPillars we just want 1)
-                                   #look at PyTorch documentation to understand what a module is
+class PillarFeatureNet(nn.Module):
     def __init__(self,
-                 num_input_features=4, #4 as we input point clouds with x,y,z,r information - then augment with further features based on pillar centres etc
-                 use_norm=True, #want to use BatchNorm
-                 num_filters=(64,), #this dictates the number of filters to use i.e. number of nodes in layers - here we have just one entry - so just 1 layer, as in PointPillars
+                 num_input_features=4,
+                 use_norm=True,
+                 num_filters=(64,),
                  with_distance=False,
-                 voxel_size=(0.2, 0.2, 4), #NB these are the default voxel_size values - based on PointPillars paper for Car
-                 pc_range=(0, -40, -3, 70.4, 40, 1)): #These are also based on the PointPillars paper - see where they mention the ,y,z range for Car
-                                                      #not sure if this needs to change per class? - It is also different (but commented) in the config file
-                                                      #so not sure which exactly to use
+                 voxel_size=(0.2, 0.2, 4),
+                 pc_range=(0, -40, -3, 70.4, 40, 1)):
         """
         Pillar Feature Net.
         The network prepares the pillar features and performs forward pass through PFNLayers. This net performs a
@@ -609,25 +593,24 @@ class PillarFeatureNet(nn.Module): #This is then a class for creating the Pillar
 
         super().__init__()
         self.name = 'PillarFeatureNet'
-        assert len(num_filters) > 0 #this cannot be zero if num_filters is empty otherwise we won't be able to define the grid properly
-        num_input_features += 5 #NB this is to do with the fact that we decorate with an additional 5 features - the arithmetic means for x,y,z and for x,y offsets to pilar centres
+        assert len(num_filters) > 0
+        num_input_features += 5
         if with_distance:
-            num_input_features += 1 #if we want an additional feature for distance we can add one more feature (with_distance is set to False in the config file)
+            num_input_features += 1
         self._with_distance = with_distance
 
         # Create PillarFeatureNet layers
-        num_filters = [num_input_features] + list(num_filters) # [4,64] - this is a list of sizes - the number of elemts in the list will determine the number of layers
-        pfn_layers = [] #an empty list to which we will append layers and then create a model from list of layers with nn.ModuleList below
-        for i in range(len(num_filters) - 1): #incrementally add layers 
-            in_filters = num_filters[i] #when i=0 and we are looking at the input layer with 4 inputs x,y,z,r
-            out_filters = num_filters[i + 1] #output filters will be 64 i.e. this is C
-            if i < len(num_filters) - 2: #if we want only 1 pfn layer - num_filters will have 2 elements so then len(num_filtes)-2 = 0 so we go to the else part
-                                         #and set last_layer = True - so then we do the max pooling step in PFNLayer
+        num_filters = [num_input_features] + list(num_filters) # [3,64]
+        pfn_layers = []
+        for i in range(len(num_filters) - 1):
+            in_filters = num_filters[i]
+            out_filters = num_filters[i + 1]
+            if i < len(num_filters) - 2:
                 last_layer = False
             else:
-                last_layer = True #set this to True so we can do the max pooling step
-            pfn_layers.append(PFNLayer(in_filters, out_filters, use_norm, last_layer=last_layer)) #append a layer, based on these criteria to the list of layers
-        self.pfn_layers = nn.ModuleList(pfn_layers) #once out of the for loop - assign self.pfn_layers based on the list - see PyTorch documentation on ModuleList
+                last_layer = True
+            pfn_layers.append(PFNLayer(in_filters, out_filters, use_norm, last_layer=last_layer))
+        self.pfn_layers = nn.ModuleList(pfn_layers)
 
         # Need pillar (voxel) size and x/y offset in order to calculate pillar offset
         self.vx = voxel_size[0]
@@ -640,44 +623,36 @@ class PillarFeatureNet(nn.Module): #This is then a class for creating the Pillar
         # pdb.set_trace()
 
         # Find distance of x, y, and z from cluster center
-        #for last index of features (concerning ndims) go first the first 3 features i.e. indices 0,1,2 (stops before 3) - which represent x,y,z
-        points_mean = features[:, :, :3].sum(dim=1, keepdim=True) / num_voxels.type_as(features).view(-1, 1, 1) 
+        points_mean = features[:, :, :3].sum(dim=1, keepdim=True) / num_voxels.type_as(features).view(-1, 1, 1)
         f_cluster = features[:, :, :3] - points_mean
 
         # Find distance of x, y, and z from pillar center
-        f_center = torch.zeros_like(features[:, :, :2]) #zeros - only want ndims to now be for x and y (i.e. indicese 0 and 1 - stops before 2) in ndims dimension
-                                                        #as we only calculate distance from pillar centre for x and y
-        
-        #NB - If you look through train.py it will point to points_to_voxel_loop in tools.py and that is where
-        #coors is actually assigned - would need to check this to confirm if this is a typo or not
-        #IT IS NOT A TYPO - points_to_voxel_loop points to points_to_voxel where there is a parameter reverse_index, set to True so it returns zyx, not xyz
-        f_center[:, :, 0] = features[:, :, 0] - (coors[:, 3].float().unsqueeze(1) * self.vx + self.x_offset) 
+        f_center = torch.zeros_like(features[:, :, :2])
+        f_center[:, :, 0] = features[:, :, 0] - (coors[:, 3].float().unsqueeze(1) * self.vx + self.x_offset)
         f_center[:, :, 1] = features[:, :, 1] - (coors[:, 2].float().unsqueeze(1) * self.vy + self.y_offset)
 
         # Combine together feature decorations
         features_ls = [features, f_cluster, f_center]
-        if self._with_distance: #this is False in config file so generally this shouldn't apply - but if it is True - additionally add a distance feature
+        if self._with_distance:
             points_dist = torch.norm(features[:, :, :3], 2, 2, keepdim=True)
             features_ls.append(points_dist)
-        features = torch.cat(features_ls, dim=-1) #might want to check the size of features after this point
+        features = torch.cat(features_ls, dim=-1)
 
         # The feature decorations were calculated without regard to whether pillar was empty. Need to ensure that
         # empty pillars remain set to zeros.
         voxel_count = features.shape[1]
-        mask = get_paddings_indicator(num_voxels, voxel_count, axis=0) #get paddings indicator is used to pad with zeros wherever we don't have enough data
-        mask = torch.unsqueeze(mask, -1).type_as(features) #creates a mask to pad with zeros where there is empty data - unsqueeze(-1) essentially acts like transpose
-        features *= mask #multiplies the features by this mask - a boolean mask so multiplying by it is equivalent to multiplying by 0 or 1
+        mask = get_paddings_indicator(num_voxels, voxel_count, axis=0)
+        mask = torch.unsqueeze(mask, -1).type_as(features)
+        features *= mask
 
         # Forward pass through PFNLayers
         for pfn in self.pfn_layers:
             features = pfn(features) #here they are considering num of voxels as batch size for linear layer
 
-        return features.squeeze() #squeeze back features after applying PFN layers
+        return features.squeeze()
 
 
 class PointPillarsScatter(nn.Module):
-#NB - In the PointPillars paper it describes how features are "scattered back to the original pillar locations"
-#that is what this class does - to return a pseudo-image of size C,H,W
     def __init__(self,
                  output_shape,
                  num_input_features=64):
@@ -690,11 +665,11 @@ class PointPillarsScatter(nn.Module):
         """
 
         super().__init__()
-        self.name = 'PointPillarsScatter' #name this class PointPillarsScatter
-        self.output_shape = output_shape #I believe the first index of the output shapre should be the batch_size
-        self.ny = output_shape[2] #This is H if the output is of size C,H,W
-        self.nx = output_shape[3] #This is W if the output is C,H,W
-        self.nchannels = num_input_features #This is C in the notation of PointPillars
+        self.name = 'PointPillarsScatter'
+        self.output_shape = output_shape
+        self.ny = output_shape[2]
+        self.nx = output_shape[3]
+        self.nchannels = num_input_features
 
     def forward(self, voxel_features, coords, batch_size):
 
@@ -703,15 +678,15 @@ class PointPillarsScatter(nn.Module):
         for batch_itt in range(batch_size):
             # Create the canvas for this sample
             canvas = torch.zeros(self.nchannels, self.nx * self.ny, dtype=voxel_features.dtype,
-                                 device=voxel_features.device) #creates an array of zeros across nchannels - each a nx x ny grid - with the same data type as voxel_features
+                                 device=voxel_features.device)
 
             # Only include non-empty pillars
-            batch_mask = coords[:, 0] == batch_itt #as per above comments - coord is of form [num_voxels, (batch, x,y)] so match the batch index
-            this_coords = coords[batch_mask, :] #Choosing coordinates and indices of those coordinatse according to which ones match the batch index
+            batch_mask = coords[:, 0] == batch_itt
+            this_coords = coords[batch_mask, :]
             indices = this_coords[:, 2] * self.nx + this_coords[:, 3]
             indices = indices.type(torch.long)
             voxels = voxel_features[batch_mask, :]
-            voxels = voxels.t() #transpose - as xy grid coords are opposite of indices of a matrix i.e. you choose row then column
+            voxels = voxels.t()
 
             # Now scatter the blob back to the canvas.
             canvas[:, indices] = voxels
@@ -723,16 +698,18 @@ class PointPillarsScatter(nn.Module):
         batch_canvas = torch.stack(batch_canvas, 0)
 
         # Undo the column stacking to final 4-dim tensor
-        batch_canvas = batch_canvas.view(batch_size, self.nchannels, self.ny, self.nx) #see pyTorch documentatio on view()
+        batch_canvas = batch_canvas.view(batch_size, self.nchannels, self.ny, self.nx)
 
         return batch_canvas
 
 
-def get_paddings_indicator(actual_num, max_num, axis=0): #this is used above for paddings the voxel features
+def get_paddings_indicator(actual_num, max_num, axis=0):
     """Create boolean mask by actually number of a padded tensor.
+
     Args:
         actual_num ([type]): [description]
         max_num ([type]): [description]
+
     Returns:
         [type]: [description]
     """
@@ -750,13 +727,12 @@ def get_paddings_indicator(actual_num, max_num, axis=0): #this is used above for
     return paddings_indicator
 
 
-class PillarFeatures(nn.Module): #overall class for applying both the PillarFeatureNet and then scattering the features back to
-                                 #original pillar locations to get a [batch_size, C,H,W] sized tensor
+class PillarFeatures(nn.Module):
 
     def __init__(self, cfg):
         super(PillarFeatures, self).__init__()
         # voxel feature extractor
-        self.cfg = cfg #feed in this cfg from the confif.py file - it will be cfg_pp when we come to using this PillarFeatures below
+        self.cfg = cfg
         self.voxel_feature_extractor = PillarFeatureNet( num_input_features = cfg['input_features'],
                 use_norm = cfg['use_norm'],
                 num_filters=cfg['vfe_filters'],
@@ -764,8 +740,8 @@ class PillarFeatures(nn.Module): #overall class for applying both the PillarFeat
                 voxel_size=cfg['voxel_size'],
                 pc_range=cfg['pc_range'])
 
-        grid_size = (np.asarray(cfg['pc_range'][3:]) - np.asarray(cfg['pc_range'][:3])) / np.asarray(cfg['voxel_size']) #determine grid_size based on point cloud range and voxel size
-        grid_size = np.round(grid_size).astype(np.int64) #rounding grid_size to integer values
+        grid_size = (np.asarray(cfg['pc_range'][3:]) - np.asarray(cfg['pc_range'][:3])) / np.asarray(cfg['voxel_size'])
+        grid_size = np.round(grid_size).astype(np.int64)
         dense_shape = [1] + grid_size[::-1].tolist() + [cfg['vfe_filters'][-1]] #grid_size[::-1] reverses the index from xyz to zyx
 
         # Middle feature extractor
@@ -782,77 +758,61 @@ class PillarFeatures(nn.Module): #overall class for applying both the PillarFeat
         spatial_features = self.middle_feature_extractor(voxel_features, coors, bsz)#self.cfg['batch_size']
         ### spatial_features (pseudo image based from Pillar features)
 
-        return spatial_features #this will ultimately return the spatial features extracted by PointPillars, which we want of size [batch_size, C,H,W]
-                                #This is what should then be taken for concatenation
-                                #THIS IS WHAT WE NEED TO PRINT OUT/USE FOR CONCAT/SEE IF THIS LINES UP WITH WHAT Lift Splat GIVES
+        return spatial_features
 
 ###############################################
 ############### Lift-splat ###################
 ###############################################
 
-#This is used in the upsampling step when creating the BEV final semantic grid output
-#However it is also used in the CamEncode part - as it relates to how Efficent Net works - still need to properly understand input and
-#output sizes for that
-#
-
-class Up(nn.Module): 
-    def __init__(self, in_channels, out_channels, scale_factor=2): #scale_factor controls by how much the outout is scaled up
+class Up(nn.Module):
+    def __init__(self, in_channels, out_channels, scale_factor=2):
         super().__init__()
-        #see pyTorch documentation for Upsample - bilinear interpolation to be used for upsampling
+
         self.up = nn.Upsample(scale_factor=scale_factor, mode='bilinear',
                               align_corners=True)
-        #convolutional block - convolution, BatchNorm, ReLU, repeated twice - 3x3 kernel with stride 1 will retain size - just different weights
+
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            #trying to reduce overfitting by adding in Dropout layers
-            nn.Dropout(p=0.5),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            #trying to reduce overfitting by adding in Dropout layers
-            nn.Dropout(p=0.5)
+            nn.ReLU(inplace=True)
         )
 
-    def forward(self, first_tensor, second_tensor): #When calling Up - this involves upsampling, concatenating with a second tensor, then convolving the resulting tensor
-        #check sizes
-        #print("(Up - forward()) Before upsampling - first_tensor_size:", first_tensor.size())
-        first_tensor = self.up(first_tensor)
-        #print("(Up - forward()) After upsampling - first_tensor_size:", first_tensor.size())
-        #print("(Up - forward()) Before concatenation - second_tensor_size:", second_tensor.size())
-        result = torch.cat([second_tensor, first_tensor], dim=1)
-        #print("(Up - forward()) After concatenation - result_size:", result.size())
-        return self.conv(result)
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        x1 = torch.cat([x2, x1], dim=1)
+        return self.conv(x1)
 
 
-class CamEncode(nn.Module): #NB This is the important part of the Lift step - that uses the Efficient Net b0 backbone
+class CamEncode(nn.Module):
     def __init__(self, D, C, downsample):
         super(CamEncode, self).__init__()
-        self.D = D #D - as per Lift Splat Shoot paper - this is the number of depth that we calculate features for - point cloud should be of size D.H.W
-        self.C = C #C - as per Lift Splat Shoot paper - this is the number of features we predict when construction contect vectors
+        self.D = D
+        self.C = C
 
-        self.trunk = EfficientNet.from_pretrained("efficientnet-b0") #use the pretrained EfficientNet-b0 weights
+        self.trunk = EfficientNet.from_pretrained("efficientnet-b0")
 
-        self.up1 = Up(320+112, 512) #need to better understand why the number of input channels is 320+112 and why the number of output channels is 512
-        self.depthnet = nn.Conv2d(512, self.D + self.C, kernel_size=1, padding=0) #this is the network that actually produces the alphas and context vectors
+        self.up1 = Up(320+112, 512)
+        self.depthnet = nn.Conv2d(512, self.D + self.C, kernel_size=1, padding=0)
 
-    def get_depth_dist(self, x, eps=1e-20): #apply softamx activation to get the depth distributions
+    def get_depth_dist(self, x, eps=1e-20):
         return x.softmax(dim=1)
 
     def get_depth_feat(self, x):
-        x = self.get_eff_depth(x) #get the effective depths
+        x = self.get_eff_depth(x)
         # Depth
         x = self.depthnet(x) ### generates features C(64) and alphas D, out D+C
 
         depth = self.get_depth_dist(x[:, :self.D]) ### applies softmax over alphas D(based on the number of bins for depths)
         #depth.unsqueeze(1) : , x[:, self.D:(self.D + self.C)].unsqueeze(2)  Column
-        new_x = depth.unsqueeze(1) * x[:, self.D:(self.D + self.C)].unsqueeze(2) #alpha * C #this is the context vector scaled by alpha i.e. c_d in Eq 1 of Lift Splat Shoot
+        new_x = depth.unsqueeze(1) * x[:, self.D:(self.D + self.C)].unsqueeze(2) #alpha * C
 
 
         return depth, new_x
 
-    def get_eff_depth(self, x): #this is the bit where is actually applies EfficientNet to get the depths and context vectors - need to explore this GitHub more
+    def get_eff_depth(self, x):
         # adapted from https://github.com/lukemelas/EfficientNet-PyTorch/blob/master/efficientnet_pytorch/model.py#L231
         endpoints = dict()
 
@@ -877,84 +837,25 @@ class CamEncode(nn.Module): #NB This is the important part of the Lift step - th
 
     def forward(self, x):
         depth, x = self.get_depth_feat(x)
-        return x #So ultimately the result of all of this CamEncode class are the camera features c_d - which we can then feed to the "Splat" step
-
-#BevEncode_0 - this will be the ResNet 18 version
-class BevEncode_0(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
-                            #either concatenation or feeding the camera and lidar features through the transformer
-                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
-                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
-    def __init__(self, inC, outC):
-        super(BevEncode_0, self).__init__()
-
-        trunk = resnet18(pretrained=True, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
-                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
-        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = trunk.bn1 #follow this with BatchNorm
-        self.relu = trunk.relu #follow this with ReLU
-
-        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
-        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
-        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
-        #adding this for applying dropout - to try to fix overfitting
-        self.dropout = nn.Dropout(p=0.5)
-
-        self.up1 = Up(64+256, 256, scale_factor=4) #need to figure out why the number of input channels needed is 64+256 - think it is because from ResNet 18 layer 1 has 
-                                                   #64 channels, layer 3 has 256 and when you upsample x1 you don't change the number of channels you just change the
-                                                   #dimensions of the image so it has the same height and width dimensions and 
-                                                   #can be concatenated with x3, along the channel dimension, so then the number of channels is 64+256 and we then reduce that down to 256
-                                                   #output channels after the 2 convolutions in the Up class
-        self.up2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',
-                              align_corners=True),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            #trying to reduce overfitting by adding in Dropout layers
-            nn.Dropout(p=0.5),
-            nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
-        )
-
-    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.dropout(x) #added to try to fix overfitting
-
-        x1 = self.layer1(x)
-        x = self.layer2(x1)
-        x = self.layer3(x)
-
-        x = self.up1(first_tensor=x, second_tensor=x1)
-        x = self.up2(x)
 
         return x
 
-#BevEncode_1 - this will be the ResNet 34 version
-class BevEncode_1(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
-                            #either concatenation or feeding the camera and lidar features through the transformer
-                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
-                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
-    def __init__(self, inC, outC):
-        super(BevEncode_1, self).__init__()
 
-        trunk = resnet34(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
-                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
+class BevEncode(nn.Module):
+    def __init__(self, inC, outC):
+        super(BevEncode, self).__init__()
+
+        trunk = resnet18(pretrained=False, zero_init_residual=True)
         self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
                                bias=False)
-        self.bn1 = trunk.bn1 #follow this with BatchNorm
-        self.relu = trunk.relu #follow this with ReLU
+        self.bn1 = trunk.bn1
+        self.relu = trunk.relu
 
-        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
-        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
-        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
+        self.layer1 = trunk.layer1
+        self.layer2 = trunk.layer2
+        self.layer3 = trunk.layer3
 
-        self.up1 = Up(64+256, 256, scale_factor=4) #need to figure out why the number of input channels needed is 64+256 - think it is because from ResNet 18 layer 1 has 
-                                                   #64 channels, layer 3 has 256 and when you upsample x1 you don't change the number of channels you just change the
-                                                   #dimensions of the image so it has the same height and width dimensions and 
-                                                   #can be concatenated with x3, along the channel dimension, so then the number of channels is 64+256 and we then reduce that down to 256
-                                                   #output channels after the 2 convolutions in the Up class
+        self.up1 = Up(64+256, 256, scale_factor=4)
         self.up2 = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear',
                               align_corners=True),
@@ -964,7 +865,7 @@ class BevEncode_1(nn.Module): #This class is used for the creation of BEV semant
             nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
         )
 
-    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
+    def forward(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -973,302 +874,57 @@ class BevEncode_1(nn.Module): #This class is used for the creation of BEV semant
         x = self.layer2(x1)
         x = self.layer3(x)
 
-        x = self.up1(first_tensor=x, second_tensor=x1)
+        x = self.up1(x, x1)
         x = self.up2(x)
 
         return x
 
-#BevEncode_2 - this will be the ResNet 50 version
-class BevEncode_2(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
-                            #either concatenation or feeding the camera and lidar features through the transformer
-                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
-                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
-    def __init__(self, inC, outC):
-        super(BevEncode_2, self).__init__()
-
-        trunk = resnet50(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
-                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
-        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = trunk.bn1 #follow this with BatchNorm
-        self.relu = trunk.relu #follow this with ReLU
-
-        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
-        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
-        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
-
-        self.up1 = Up(256+1024, 1024, scale_factor=4) #need to figure out why the number of input channels needed is 64+256 - think it is because from ResNet 18 layer 1 has 
-                                                   #64 channels, layer 3 has 256 and when you upsample x1 you don't change the number of channels you just change the
-                                                   #dimensions of the image so it has the same height and width dimensions and 
-                                                   #can be concatenated with x3, along the channel dimension, so then the number of channels is 64+256 and we then reduce that down to 256
-                                                   #output channels after the 2 convolutions in the Up class
-        self.up2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',
-                              align_corners=True),
-            nn.Conv2d(1024, 512, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, outC, kernel_size=1, padding=0), ##number of output channels outC
-        )
-
-    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-
-        x1 = self.layer1(x)
-        x = self.layer2(x1)
-        x = self.layer3(x)
-
-        x = self.up1(first_tensor=x, second_tensor=x1)
-        x = self.up2(x)
-
-        return x
-
-#BevEncode_3 - this will be the ResNet 18 version
-class BevEncode_3(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
-                            #either concatenation or feeding the camera and lidar features through the transformer
-                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
-                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
-    def __init__(self, inC, outC):
-        super(BevEncode_3, self).__init__()
-
-        trunk = resnet18(pretrained=True, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
-                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
-        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = trunk.bn1 #follow this with BatchNorm
-        self.relu = trunk.relu #follow this with ReLU
-
-        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
-        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
-        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
-        #adding this for applying dropout - to try to fix overfitting
-        self.dropout = nn.Dropout(p=0.5)
-
-        self.up1 = Up(128+256, 256, scale_factor=2) #x3 upsampled, concat with x2
-        self.up2 = Up(64+256, 256, scale_factor=2) #result of up1 upsampled, concatenated with x1
-        self.up3 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',
-                              align_corners=True),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            #adding this for applying dropout - to try to fix overfitting
-            nn.Dropout(p=0.5),
-            nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
-        )
-
-    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
-        x = self.conv1(x)
-        #print("(BevEncode_3 - forward()) After conv1 - size of x:", x.size())
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x1 = self.layer1(x)
-        #print("(BevEncode_3 - forward()) size of x1:", x1.size())
-        x2 = self.layer2(x1)
-        #print("(BevEncode_3 - forward()) size of x2:", x2.size())
-        x3 = self.layer3(x2)
-        #print("(BevEncode_3 - forward()) size of x3:", x3.size())
-
-        x = self.up1(first_tensor=x3, second_tensor=x2)
-        #print("(BevEncode_3 - forward()) result of up1:", x.size())
-        x = self.up2(first_tensor=x,second_tensor=x1)
-        #print("(BevEncode_3 - forward()) result of up2:", x.size())
-        x = self.up3(x)
-        #print("(BevEncode_3 - forward()) result of up3:", x.size())
-
-        return x
-
-#BevEncode_4 - this will be the ResNet 34 version
-class BevEncode_4(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
-                            #either concatenation or feeding the camera and lidar features through the transformer
-                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
-                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
-    def __init__(self, inC, outC):
-        super(BevEncode_4, self).__init__()
-
-        trunk = resnet34(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
-                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
-        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = trunk.bn1 #follow this with BatchNorm
-        self.relu = trunk.relu #follow this with ReLU
-
-        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
-        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
-        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
-
-        self.up1 = Up(128+256, 256, scale_factor=2) 
-        self.up2 = Up(64+256, 256, scale_factor=2) 
-        self.up3 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',
-                              align_corners=True),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
-        )
-
-    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
-        x = self.conv1(x)
-        #print("(BevEncode_4 - forward()) After conv1 - size of x:", x.size())
-        x = self.bn1(x)
-        x = self.relu(x)
-
-        x1 = self.layer1(x)
-        #print("(BevEncode_4 - forward()) size of x1:", x1.size())
-        x2 = self.layer2(x1)
-        #print("(BevEncode_4 - forward()) size of x2:", x2.size())
-        x3 = self.layer3(x2)
-        #print("(BevEncode_4 - forward()) size of x3:", x3.size())
-
-        x = self.up1(first_tensor=x3, second_tensor=x2)
-        #print("(BevEncode_4 - forward()) result of up1:", x.size())
-        x = self.up2(first_tensor=x,second_tensor=x1)
-        #print("(BevEncode_4 - forward()) result of up2:", x.size())
-        x = self.up3(x)
-        #print("(BevEncode_4 - forward()) result of up3:", x.size())
-
-        return x
-
-#BevEncode_5 - this will be the ResNet 50 version
-class BevEncode_5(nn.Module): #This class is used for the creation of BEV semantic grids - it should work on the fused features that result from
-                            #either concatenation or feeding the camera and lidar features through the transformer
-                            #NOTE IF I WANT TO DO SOMETHING DIFFERENT WITH THE ENCODER-DECODER PART OF THE NETWORK 0 I THINK THIS IS WHAT I WILL NEED TO TWEAK
-                            #NEED TO BE VERY CAREFUL THOUGH - MESSING WITH SIZES AND NUMBER OF FILTERS ETC COULD RESULT IN ERRORS
-    def __init__(self, inC, outC):
-        super(BevEncode_5, self).__init__()
-
-        trunk = resnet50(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
-                                                                    #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
-        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = trunk.bn1 #follow this with BatchNorm
-        self.relu = trunk.relu #follow this with ReLU
-
-        self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
-        self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
-        self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
-
-        self.up1 = Up(512+1024, 1024, scale_factor=2) #try concatenating an upsampled version of x2 with x1
-        self.up2 = Up(256+1024, 1024, scale_factor=2) #try concatenating an upsampled version of what results from up1 with x3
-        self.up3 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',
-                              align_corners=True),
-            nn.Conv2d(1024, 512, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, outC, kernel_size=1, padding=0), ##number of output channels outC
-        )
-
-    def forward(self, x): #this is the forward pass through the whole network for BEV encoding
-        x = self.conv1(x)
-        #print("(BevEncode_5 - forward()) After conv1 - size of x:", x.size())
-        x = self.bn1(x)
-        x = self.relu(x)
-
-        x1 = self.layer1(x)
-        #print("(BevEncode_5 - forward()) size of x1:", x1.size())
-        x2 = self.layer2(x1)
-        #print("(BevEncode_5 - forward()) size of x2:", x2.size())
-        x3 = self.layer3(x2)
-        #print("(BevEncode_5 - forward()) size of x3:", x3.size())
-
-        x = self.up1(first_tensor=x3, second_tensor=x2)
-        #print("(BevEncode_5 - forward()) result of up1:", x.size())
-        x = self.up2(first_tensor=x,second_tensor=x1)
-        #print("(BevEncode_5 - forward()) result of up2:", x.size())
-        x = self.up3(x)
-        #print("(BevEncode_5 - forward()) result of up3:", x.size())
-
-        return x
-    
-#This is where it all comes together - we instantiate this class when we call compile_model() below and then this is our end-to-end model with everything
-#that we then go about training
-#NOTE: Removed tf_config as this would not be relevant to pass if not using a transformer
 
 class LPT(nn.Module):
-    def __init__(self, grid_conf, data_aug_conf, outC,pp_config):
+    def __init__(self, grid_conf, data_aug_conf, outC,pp_config,tf_config):
         super(LPT, self).__init__()
-        self.grid_conf = grid_conf #this will come from the config file - this will govern how the final semantic grid is set up
-        self.data_aug_conf = data_aug_conf #this will come from the config file and will determine how data augmentation is done
-        self.pp_config = pp_config #this will come from the config file and will goven how PointPillars is implemnted
+        self.grid_conf = grid_conf
+        self.data_aug_conf = data_aug_conf
+        self.pp_config = pp_config
 
-        #use gen_dx_bx from tools to set up the grid spacings
         dx, bx, nx = gen_dx_bx(self.grid_conf['xbound'],
                                               self.grid_conf['ybound'],
                                               self.grid_conf['zbound'],
                                               )
-        #NB Need to introduce a new parameter 'decoder_mode' to determine whether resnet 18/34/50 blocks are being used in the encoder
-        #0 -> resnet18
-        #1 -> resnet34
-        #2 -> resnet50
-        decoder_mode = self.grid_conf['decoder_mode']
-        
-        self.dx = nn.Parameter(dx, requires_grad=False) #set these as parameters for the neural network
+        self.dx = nn.Parameter(dx, requires_grad=False)
         self.bx = nn.Parameter(bx, requires_grad=False)
         self.nx = nn.Parameter(nx, requires_grad=False)
 
-        self.downsample = 16 #parameter to control downsampling of the actual nuScenes images
-        self.camC = 64 #parameter C that controls the size of the context vectors for Lift Splat Shoot
-        self.frustum = self.create_frustum() #function defined below for creating frustum
-        self.D, _, _, _ = self.frustum.shape #frustum shape
+        self.downsample = 16
+        self.camC = 64
+        self.frustum = self.create_frustum()
+        self.D, _, _, _ = self.frustum.shape
         self.camencode = CamEncode(self.D, self.camC, self.downsample) ## camC features from lift, D number of discrete bins for depths
         
         # sum lift-splat features and PointPillars features
-        self.inFeatures = self.camC + self.pp_config['vfe_filters'][0] #why are these summed? where is this used?
-        
-        #set up dict where keys are decoder_mode values and values point to the corresponding BevEncode class
-        #inC should be 128 after concatenating camera and lidar each with C=64, along channel dimension
-        self.bevencode = {0:BevEncode_0(inC=128, outC=outC),
-                         1:BevEncode_1(inC=128, outC=outC),
-                         2:BevEncode_2(inC=128, outC=outC),
-                         3:BevEncode_3(inC=128, outC=outC),
-                         4:BevEncode_4(inC=128, outC=outC),
-                         5:BevEncode_5(inC=128, outC=outC)}[decoder_mode]
-        
-        
-        #if decoder_mode == 0: #this was a previous way of assigning self.bevencode but dict is cleaner
-        #   self.bevencode = BevEncode_0(inC=128, outC=outC) ### outC number of output channels - why is inC equal to 1920? 
-                                                              #It is different (=384 i.e. 256+64+64? when using 2 transformers
-                                                              #see models_2t.py file - think this could be influenced by how the 
-                                                              #transformers are influencing channels
-                                                              #so want to use just concatenation - see if this affects channel depth)
-                                                              #changed this in my code to 128 - conct along channel dim - 64+64
-        #elif decoder_mode == 1:
-        #   self.bevencode = BevEncode_1(inC=128, outC=outC)
-        #elif decoder_mode == 2:
-        #   self.bevencode = BevEncode_2(inC=128, outC=outC)
-        #else:
-        #   raise ValueError("Error with decoder_mode value in grid_conf - value must be 0,1 or 2 - check config")
-        
-        self.pointpillars = PillarFeatures(pp_config) #instantiate PillarFeatures class
+        self.inFeatures = self.camC + self.pp_config['vfe_filters'][0]
 
-        #self.transfuser = Transfuser(tf_config) #instantiate transfuser class - I WILL NOT NEED THIS IF NOT USING TRANSFORMERS
+        self.bevencode = BevEncode(inC=1920, outC=outC) ### outC number of output channels
 
-        # toggle using QuickCumsum vs. autograd #NB Need to explore the alternative of how autograd is applied if not using QuickCumSum
+        self.pointpillars = PillarFeatures(pp_config)
+
+        self.transfuser = Transfuser(tf_config)
+
+        # toggle using QuickCumsum vs. autograd
         self.use_quickcumsum = True
     
     def create_frustum(self):
         # make grid in image plane
-        ogfH, ogfW = self.data_aug_conf['final_dim'] #final height and width as per data augmentation configurations
-        fH, fW = ogfH // self.downsample, ogfW // self.downsample #further downsample from those dimensions
-        #NB When we pass *self.grid_conf['dbound'] the * when passed as an argument to a function causes the iterables (list, tuples) to be unpacked and passed to the function
-        #dbound in the config file contains a list of 3 elements, so these are passed as start, end and step i.e. we go from 4m to 45m in steps of 1m as per Lift Splat Shoot
-        #we then reshape the view and expand so the 2nd and 3rd dimensions are of size fH, fW 
+        ogfH, ogfW = self.data_aug_conf['final_dim']
+        fH, fW = ogfH // self.downsample, ogfW // self.downsample
         ds = torch.arange(*self.grid_conf['dbound'], dtype=torch.float).view(-1, 1, 1).expand(-1, fH, fW)        
-        D, _, _ = ds.shape #as in Lift Splat Shoot paper we create a D.H.W sized point cloud for the camera features so this is how we assign D
-        xs = torch.linspace(0, ogfW - 1, fW, dtype=torch.float).view(1, 1, fW).expand(D, fH, fW) #then create a linspace - starting fron 0 going to ogfW-1 inclusive, 
-                                                                                                 #in fW evenly spaced steps - think with this every cell should be 16x16 pixels
-                                                                                                 #if downsample is 16
-        ys = torch.linspace(0, ogfH - 1, fH, dtype=torch.float).view(1, fH, 1).expand(D, fH, fW) #similarly create a linspace in Y direction
-        print('xs shape: ', xs.shape)
-        print('ys shape: ', ys.shape)
-        # D x H x W x 3 #not sure why we have 3 separate spacings rather than just one DxHxW grid
-        frustum = torch.stack((xs, ys, ds), -1) #stack xs,ys,ds
+        D, _, _ = ds.shape #
+        xs = torch.linspace(0, ogfW - 1, fW, dtype=torch.float).view(1, 1, fW).expand(D, fH, fW)
+        ys = torch.linspace(0, ogfH - 1, fH, dtype=torch.float).view(1, fH, 1).expand(D, fH, fW)
+        #print('xs: ', xs.shape)
+        #print('ys: ', ys.shape)
+        # D x H x W x 3
+        frustum = torch.stack((xs, ys, ds), -1)
         return nn.Parameter(frustum, requires_grad=False)
 
     def get_geometry(self, rots, trans, intrins, post_rots, post_trans):
@@ -1280,8 +936,8 @@ class LPT(nn.Module):
 
         # undo post-transformation
         # B x N x D x H x W x 3
-        points = self.frustum - post_trans.view(B, N, 1, 1, 1, 3) #reshape the post transformations (from ego to cam) - need to do this first to get right size
-        points = torch.inverse(post_rots).view(B, N, 1, 1, 1, 3, 3).matmul(points.unsqueeze(-1)) #then invert the post rotations
+        points = self.frustum - post_trans.view(B, N, 1, 1, 1, 3)
+        points = torch.inverse(post_rots).view(B, N, 1, 1, 1, 3, 3).matmul(points.unsqueeze(-1))
 
         # cam_to_ego
         points = torch.cat((points[:, :, :, :, :, :2] * points[:, :, :, :, :, 2:3],
@@ -1305,8 +961,7 @@ class LPT(nn.Module):
 
         return x
 
-    def voxel_pooling(self, geom_feats, x): #still don't fully understand what is going on here - this is the crux of the pooling step and what I would need to change if I want to
-                                            #use BEVFusion's version of pooling
+    def voxel_pooling(self, geom_feats, x):
         B, N, D, H, W, C = x.shape
         Nprime = B*N*D*H*W
 
@@ -1348,7 +1003,7 @@ class LPT(nn.Module):
         # collapse Z
         final = torch.cat(final.unbind(dim=2), 1) ### unbind removes tensor 2nd dimension (z) then dimension B*C*X*Y
                                                                                                                ##H*W?
-        return final #NB THIS IS THE FINAL SIZE OF TENSOR THAT WE WANT - IF WE WERE TO CONCATENATE THE TENSORS RATHER THAN USE THE TRANSFORMER WE WOULD WANT TO TAKE IT FROM HERE
+        return final
 
     def get_voxels(self, x, rots, trans, intrins, post_rots, post_trans): ### get pillars
         geom = self.get_geometry(rots, trans, intrins, post_rots, post_trans)
@@ -1356,26 +1011,20 @@ class LPT(nn.Module):
 
         x = self.voxel_pooling(geom, x) #### deliver tensor B*C*X*Y
 
-        return x #THIS ESSENTIALLY COMBINES ALL THE STEPS ABOVE - THIS IS THE TENSOR WE WOULD WANT TO CONCATENATE WITH THE RESULT OF
-                 #PillarFeatures that we get after calling self.pointpillars
-
-    def forward(self, x, rots, trans, intrins, post_rots, post_trans, voxels, coors, num_points): #NB THIS IS WHERE WE PUT IT ALL TOGETHER
-                                                                                                  #ACROSS THE ENTIRE ARCHITECTURE
-        
-        x = self.get_voxels(x, rots, trans, intrins, post_rots, post_trans) #this gives us the Lift Splat Shoot features - in shape (batch size, C,H,W)
-        
-        bsz = x.shape[0]
-        pointpillars_features = self.pointpillars(voxels, coors, num_points,bsz) #this gives us the PointPillars features - in the form (batch size,C,H,W)
-    
-        #x = self.transfuser(x,pointpillars_features)#transfuser #THINK THIS IS WHERE WE WOULD NEED TO JUST REPLACE THE TRANSFUSER PART WITH CONCATENATION 
-        x = torch.cat((x,pointpillars_features),dim=1) #want to concatenate along the channel dimension i.e C dimension
-                                                       #NB PyTorch expects argument to be a sequence/tuple of tensors to be concatenated
-        
-        x = self.bevencode(x) ### encoder to create BEV - IF WE INSTEAD PASSED CONCATENATED FEATURES RATHER THAN THE RESULT OF TRANSFORMER
-                                #IT MAY THEN BE OK TO USE BEVENCODE - BUT AGAIN - WE MAY WANT TO FIDDLE AROUND WITH THE WAY THE ENCODER-DECODER IS SET UP
         return x
 
-#Note have removed tf_config from set of passed parameters as it would no longer be relevant - changed LPT definition
-def compile_model(grid_conf, data_aug_conf, outC,cfg_pp): #NB THIS THE FINAL ULTIMATE FUNCTION WE WANT TO RUN IN SUBSEQUENT FILES!!!
-    return LPT(grid_conf, data_aug_conf, outC,cfg_pp) #If we want to change LPT to not have the transformer bit - may need to rename the class - so we can return 
-                                                                #something else
+    def forward(self, x, rots, trans, intrins, post_rots, post_trans, voxels, coors, num_points):
+        
+        x = self.get_voxels(x, rots, trans, intrins, post_rots, post_trans) 
+        
+        bsz = x.shape[0]
+        pointpillars_features = self.pointpillars(voxels, coors, num_points,bsz)
+    
+        x = self.transfuser(x,pointpillars_features)#transfuser        
+        
+        x = self.bevencode(x) ### encoder to create BEV
+        return x
+
+
+def compile_model(grid_conf, data_aug_conf, outC,cfg_pp,tf_config):
+        return LPT(grid_conf, data_aug_conf, outC,cfg_pp,tf_config)
