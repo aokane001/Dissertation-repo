@@ -817,12 +817,12 @@ class Up(nn.Module):
 
     def forward(self, first_tensor, second_tensor): #When calling Up - this involves upsampling, concatenating with a second tensor, then convolving the resulting tensor
         #check sizes
-        print("(Up - forward()) Before upsampling - first_tensor_size:", first_tensor.size())
+        #print("(Up - forward()) Before upsampling - first_tensor_size:", first_tensor.size())
         first_tensor = self.up(first_tensor)
-        print("(Up - forward()) After upsampling - first_tensor_size:", first_tensor.size())
-        print("(Up - forward()) Before concatenation - second_tensor_size:", second_tensor.size())
+        #print("(Up - forward()) After upsampling - first_tensor_size:", first_tensor.size())
+        #print("(Up - forward()) Before concatenation - second_tensor_size:", second_tensor.size())
         result = torch.cat([second_tensor, first_tensor], dim=1)
-        print("(Up - forward()) After concatenation - result_size:", result.size())
+        #print("(Up - forward()) After concatenation - result_size:", result.size())
         return self.conv(result)
 
 
@@ -1061,24 +1061,24 @@ class BevEncode_3(nn.Module): #This class is used for the creation of BEV semant
 
     def forward(self, x): #this is the forward pass through the whole network for BEV encoding
         x = self.conv1(x)
-        print("(BevEncode_3 - forward()) After conv1 - size of x:", x.size())
+        #print("(BevEncode_3 - forward()) After conv1 - size of x:", x.size())
         x = self.bn1(x)
         x = self.relu(x)
         x = self.dropout(x)
 
         x1 = self.layer1(x)
-        print("(BevEncode_3 - forward()) size of x1:", x1.size())
+        #print("(BevEncode_3 - forward()) size of x1:", x1.size())
         x2 = self.layer2(x1)
-        print("(BevEncode_3 - forward()) size of x2:", x2.size())
+        #print("(BevEncode_3 - forward()) size of x2:", x2.size())
         x3 = self.layer3(x2)
-        print("(BevEncode_3 - forward()) size of x3:", x3.size())
+        #print("(BevEncode_3 - forward()) size of x3:", x3.size())
 
         x = self.up1(first_tensor=x3, second_tensor=x2)
-        print("(BevEncode_3 - forward()) result of up1:", x.size())
+        #print("(BevEncode_3 - forward()) result of up1:", x.size())
         x = self.up2(first_tensor=x,second_tensor=x1)
-        print("(BevEncode_3 - forward()) result of up2:", x.size())
+        #print("(BevEncode_3 - forward()) result of up2:", x.size())
         x = self.up3(x)
-        print("(BevEncode_3 - forward()) result of up3:", x.size())
+        #print("(BevEncode_3 - forward()) result of up3:", x.size())
 
         return x
 
@@ -1114,23 +1114,23 @@ class BevEncode_4(nn.Module): #This class is used for the creation of BEV semant
 
     def forward(self, x): #this is the forward pass through the whole network for BEV encoding
         x = self.conv1(x)
-        print("(BevEncode_4 - forward()) After conv1 - size of x:", x.size())
+        #print("(BevEncode_4 - forward()) After conv1 - size of x:", x.size())
         x = self.bn1(x)
         x = self.relu(x)
 
         x1 = self.layer1(x)
-        print("(BevEncode_4 - forward()) size of x1:", x1.size())
+        #print("(BevEncode_4 - forward()) size of x1:", x1.size())
         x2 = self.layer2(x1)
-        print("(BevEncode_4 - forward()) size of x2:", x2.size())
+        #print("(BevEncode_4 - forward()) size of x2:", x2.size())
         x3 = self.layer3(x2)
-        print("(BevEncode_4 - forward()) size of x3:", x3.size())
+        #print("(BevEncode_4 - forward()) size of x3:", x3.size())
 
         x = self.up1(first_tensor=x3, second_tensor=x2)
-        print("(BevEncode_4 - forward()) result of up1:", x.size())
+        #print("(BevEncode_4 - forward()) result of up1:", x.size())
         x = self.up2(first_tensor=x,second_tensor=x1)
-        print("(BevEncode_4 - forward()) result of up2:", x.size())
+        #print("(BevEncode_4 - forward()) result of up2:", x.size())
         x = self.up3(x)
-        print("(BevEncode_4 - forward()) result of up3:", x.size())
+        #print("(BevEncode_4 - forward()) result of up3:", x.size())
 
         return x
 
@@ -1166,23 +1166,23 @@ class BevEncode_5(nn.Module): #This class is used for the creation of BEV semant
 
     def forward(self, x): #this is the forward pass through the whole network for BEV encoding
         x = self.conv1(x)
-        print("(BevEncode_5 - forward()) After conv1 - size of x:", x.size())
+        #print("(BevEncode_5 - forward()) After conv1 - size of x:", x.size())
         x = self.bn1(x)
         x = self.relu(x)
 
         x1 = self.layer1(x)
-        print("(BevEncode_5 - forward()) size of x1:", x1.size())
+        #print("(BevEncode_5 - forward()) size of x1:", x1.size())
         x2 = self.layer2(x1)
-        print("(BevEncode_5 - forward()) size of x2:", x2.size())
+        #print("(BevEncode_5 - forward()) size of x2:", x2.size())
         x3 = self.layer3(x2)
-        print("(BevEncode_5 - forward()) size of x3:", x3.size())
+        #print("(BevEncode_5 - forward()) size of x3:", x3.size())
 
         x = self.up1(first_tensor=x3, second_tensor=x2)
-        print("(BevEncode_5 - forward()) result of up1:", x.size())
+        #print("(BevEncode_5 - forward()) result of up1:", x.size())
         x = self.up2(first_tensor=x,second_tensor=x1)
-        print("(BevEncode_5 - forward()) result of up2:", x.size())
+        #print("(BevEncode_5 - forward()) result of up2:", x.size())
         x = self.up3(x)
-        print("(BevEncode_5 - forward()) result of up3:", x.size())
+        #print("(BevEncode_5 - forward()) result of up3:", x.size())
 
         return x
     
