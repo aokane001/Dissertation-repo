@@ -815,10 +815,10 @@ class Up(nn.Module):
             nn.Dropout(p=0.5)
         )
 
-    def forward(self, x1, x2): #When calling Up - this involves upsampling, concatenating with a second tensor, then convolving the resulting tensor
-        x1 = self.up(x1)
-        x1 = torch.cat([x2, x1], dim=1)
-        return self.conv(x1)
+    def forward(self, first_tensor, second_tensor): #When calling Up - this involves upsampling, concatenating with a second tensor, then convolving the resulting tensor
+        first_tensor = self.up(first_tensor)
+        result = torch.cat([second_tensor, first_tensor], dim=1)
+        return self.conv(result)
 
 
 class CamEncode(nn.Module): #NB This is the important part of the Lift step - that uses the Efficient Net b0 backbone
@@ -921,7 +921,7 @@ class BevEncode_0(nn.Module): #This class is used for the creation of BEV semant
         x = self.layer2(x1)
         x = self.layer3(x)
 
-        x = self.up1(x, x1)
+        x = self.up1(first_tensor=x, second_tensor=x1)
         x = self.up2(x)
 
         return x
@@ -968,7 +968,7 @@ class BevEncode_1(nn.Module): #This class is used for the creation of BEV semant
         x = self.layer2(x1)
         x = self.layer3(x)
 
-        x = self.up1(x, x1)
+        x = self.up1(first_tensor=x, second_tensor=x1)
         x = self.up2(x)
 
         return x
@@ -1015,7 +1015,7 @@ class BevEncode_2(nn.Module): #This class is used for the creation of BEV semant
         x = self.layer2(x1)
         x = self.layer3(x)
 
-        x = self.up1(x, x1)
+        x = self.up1(first_tensor=x, second_tensor=x1)
         x = self.up2(x)
 
         return x
@@ -1064,8 +1064,8 @@ class BevEncode_3(nn.Module): #This class is used for the creation of BEV semant
         x2 = self.layer2(x1)
         x3 = self.layer3(x2)
 
-        x = self.up1(x2, x1)
-        x = self.up2(x3,x)
+        x = self.up1(first_tensor=x2, second_tensor=x1)
+        x = self.up2(first_tensor=x3,second_tensor=x)
         x = self.up3(x)
 
         return x
@@ -1109,8 +1109,8 @@ class BevEncode_4(nn.Module): #This class is used for the creation of BEV semant
         x2 = self.layer2(x1)
         x3 = self.layer3(x2)
 
-        x = self.up1(x2, x1)
-        x = self.up2(x3,x)
+        x = self.up1(first_tensor=x2, second_tensor=x1)
+        x = self.up2(first_tensor=x3,second_tensor=x)
         x = self.up3(x)
 
         return x
@@ -1154,8 +1154,8 @@ class BevEncode_5(nn.Module): #This class is used for the creation of BEV semant
         x2 = self.layer2(x1)
         x3 = self.layer3(x2)
 
-        x = self.up1(x2, x1)
-        x = self.up2(x3,x)
+        x = self.up1(first_tensor=x2, second_tensor=x1)
+        x = self.up2(first_tensor=x3,second_tensor=x)
         x = self.up3(x)
 
         return x
