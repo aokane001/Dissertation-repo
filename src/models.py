@@ -1046,17 +1046,17 @@ class BevEncode_3(nn.Module): #This class is used for the creation of BEV semant
         #adding this for applying dropout - to try to fix overfitting
         self.dropout = nn.Dropout(p=0.5)
 
-        self.up1 = Up(64+128, 128, scale_factor=2) #try concatenating an upsampled version of x2 with x1
-        self.up2 = Up(128+256, 256, scale_factor=2) #try concatenating an upsampled version of what results from up1 with x3
+        self.up1 = Up(128+256, 256, scale_factor=2) #x3 upsampled, concat with x2
+        self.up2 = Up(64+128, 128, scale_factor=2) #result of up1 upsampled, concatenated with x1
         self.up3 = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear',
                               align_corners=True),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(128, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             #adding this for applying dropout - to try to fix overfitting
             nn.Dropout(p=0.5),
-            nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
+            nn.Conv2d(64, outC, kernel_size=1, padding=0), ##number of output channels outC
         )
 
     def forward(self, x): #this is the forward pass through the whole network for BEV encoding
@@ -1101,15 +1101,15 @@ class BevEncode_4(nn.Module): #This class is used for the creation of BEV semant
         self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
         self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
 
-        self.up1 = Up(64+128, 128, scale_factor=2) #try concatenating an upsampled version of x2 with x1
-        self.up2 = Up(128+256, 256, scale_factor=2) #try concatenating an upsampled version of what results from up1 with x3
+        self.up1 = Up(128+256, 256, scale_factor=2) 
+        self.up2 = Up(64+128, 128, scale_factor=2) 
         self.up3 = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear',
                               align_corners=True),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(128, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
+            nn.Conv2d(64, outC, kernel_size=1, padding=0), ##number of output channels outC
         )
 
     def forward(self, x): #this is the forward pass through the whole network for BEV encoding
@@ -1153,15 +1153,15 @@ class BevEncode_5(nn.Module): #This class is used for the creation of BEV semant
         self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
         self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
 
-        self.up1 = Up(256+512, 512, scale_factor=2) #try concatenating an upsampled version of x2 with x1
-        self.up2 = Up(512+1024, 1024, scale_factor=2) #try concatenating an upsampled version of what results from up1 with x3
+        self.up1 = Up(512+1024, 1024, scale_factor=2) #try concatenating an upsampled version of x2 with x1
+        self.up2 = Up(256+512, 512, scale_factor=2) #try concatenating an upsampled version of what results from up1 with x3
         self.up3 = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear',
                               align_corners=True),
-            nn.Conv2d(1024, 512, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(512, 256, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
-            nn.Conv2d(512, outC, kernel_size=1, padding=0), ##number of output channels outC
+            nn.Conv2d(256, outC, kernel_size=1, padding=0), ##number of output channels outC
         )
 
     def forward(self, x): #this is the forward pass through the whole network for BEV encoding
