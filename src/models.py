@@ -825,6 +825,26 @@ class Up(nn.Module):
         #print("(Up - forward()) After concatenation - result_size:", result.size())
         return self.conv(result)
 
+class Up_no_dropout(nn.Module):
+    def __init__(self, in_channels, out_channels, scale_factor=2):
+        super().__init__()
+
+        self.up = nn.Upsample(scale_factor=scale_factor, mode='bilinear',
+                              align_corners=True)
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        x1 = torch.cat([x2, x1], dim=1)
+        return self.conv(x1)    
 
 class CamEncode(nn.Module): #NB This is the important part of the Lift step - that uses the Efficient Net b0 backbone
     def __init__(self, D, C, downsample):
@@ -834,7 +854,7 @@ class CamEncode(nn.Module): #NB This is the important part of the Lift step - th
 
         self.trunk = EfficientNet.from_pretrained("efficientnet-b0") #use the pretrained EfficientNet-b0 weights
 
-        self.up1 = Up(320+112, 512) #need to better understand why the number of input channels is 320+112 and why the number of output channels is 512
+        self.up1 = Up_no_dropout(320+112, 512) #need to better understand why the number of input channels is 320+112 and why the number of output channels is 512
         self.depthnet = nn.Conv2d(512, self.D + self.C, kernel_size=1, padding=0) #this is the network that actually produces the alphas and context vectors
 
     def get_depth_dist(self, x, eps=1e-20): #apply softamx activation to get the depth distributions
