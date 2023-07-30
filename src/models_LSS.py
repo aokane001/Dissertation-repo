@@ -256,5 +256,5 @@ class LiftSplatShoot(nn.Module):
         return x
 
 
-def compile_model(grid_conf, data_aug_conf, outC):
+def compile_LSS_model(grid_conf, data_aug_conf, outC):
     return LiftSplatShoot(grid_conf, data_aug_conf, outC)
