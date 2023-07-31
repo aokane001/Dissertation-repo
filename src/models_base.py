@@ -812,10 +812,10 @@ class Up_no_dropout(nn.Module):
             nn.ReLU(inplace=True)
         )
 
-    def forward(self, x1, x2):
-        x1 = self.up(x1)
-        x1 = torch.cat([x2, x1], dim=1)
-        return self.conv(x1)    
+    def forward(self, first_tensor, second_tensor):
+        first_tensor = self.up(first_tensor)
+        result = torch.cat([second_tensor, first_tensor], dim=1)
+        return self.conv(result)    
 
 class CamEncode(nn.Module): #NB This is the important part of the Lift step - that uses the Efficient Net b0 backbone
     def __init__(self, D, C, downsample):
