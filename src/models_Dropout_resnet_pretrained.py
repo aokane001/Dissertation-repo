@@ -959,7 +959,7 @@ class BevEncode_1(nn.Module): #This class is used for the creation of BEV semant
     def __init__(self, inC, outC):
         super(BevEncode_1, self).__init__()
 
-        trunk = resnet34(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
+        trunk = resnet34(pretrained=True, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
                                                                     #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
         self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
                                bias=False)
@@ -969,6 +969,8 @@ class BevEncode_1(nn.Module): #This class is used for the creation of BEV semant
         self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
         self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
         self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
+        #adding this for applying dropout - to try to fix overfitting
+        self.dropout = nn.Dropout(p=0.5)
 
         self.up1 = Up(64+256, 256, scale_factor=4) #need to figure out why the number of input channels needed is 64+256 - think it is because from ResNet 18 layer 1 has 
                                                    #64 channels, layer 3 has 256 and when you upsample x1 you don't change the number of channels you just change the
@@ -981,6 +983,8 @@ class BevEncode_1(nn.Module): #This class is used for the creation of BEV semant
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
+            #trying to reduce overfitting by adding in Dropout layers
+            nn.Dropout(p=0.5),
             nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
         )
 
@@ -988,6 +992,7 @@ class BevEncode_1(nn.Module): #This class is used for the creation of BEV semant
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
+        x = self.dropout(x) #added to try to fix overfitting
 
         x1 = self.layer1(x)
         x = self.layer2(x1)
@@ -1006,7 +1011,7 @@ class BevEncode_2(nn.Module): #This class is used for the creation of BEV semant
     def __init__(self, inC, outC):
         super(BevEncode_2, self).__init__()
 
-        trunk = resnet50(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
+        trunk = resnet50(pretrained=True, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
                                                                     #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
         self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
                                bias=False)
@@ -1016,6 +1021,8 @@ class BevEncode_2(nn.Module): #This class is used for the creation of BEV semant
         self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
         self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
         self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
+        #adding this for applying dropout - to try to fix overfitting
+        self.dropout = nn.Dropout(p=0.5)
 
         self.up1 = Up(256+1024, 1024, scale_factor=4) #need to figure out why the number of input channels needed is 64+256 - think it is because from ResNet 18 layer 1 has 
                                                    #64 channels, layer 3 has 256 and when you upsample x1 you don't change the number of channels you just change the
@@ -1028,6 +1035,8 @@ class BevEncode_2(nn.Module): #This class is used for the creation of BEV semant
             nn.Conv2d(1024, 512, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
+            #trying to reduce overfitting by adding in Dropout layers
+            nn.Dropout(p=0.5),
             nn.Conv2d(512, outC, kernel_size=1, padding=0), ##number of output channels outC
         )
 
@@ -1035,6 +1044,7 @@ class BevEncode_2(nn.Module): #This class is used for the creation of BEV semant
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
+        x = self.dropout(x) #added to try to fix overfitting
 
         x1 = self.layer1(x)
         x = self.layer2(x1)
@@ -1110,7 +1120,7 @@ class BevEncode_4(nn.Module): #This class is used for the creation of BEV semant
     def __init__(self, inC, outC):
         super(BevEncode_4, self).__init__()
 
-        trunk = resnet34(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
+        trunk = resnet34(pretrained=True, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
                                                                     #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
         self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
                                bias=False)
@@ -1120,6 +1130,8 @@ class BevEncode_4(nn.Module): #This class is used for the creation of BEV semant
         self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
         self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
         self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
+        #adding this for applying dropout - to try to fix overfitting
+        self.dropout = nn.Dropout(p=0.5)
 
         self.up1 = Up(128+256, 256, scale_factor=2) 
         self.up2 = Up(64+256, 256, scale_factor=2) 
@@ -1129,6 +1141,8 @@ class BevEncode_4(nn.Module): #This class is used for the creation of BEV semant
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
+            #adding this for applying dropout - to try to fix overfitting
+            nn.Dropout(p=0.5),
             nn.Conv2d(128, outC, kernel_size=1, padding=0), ##number of output channels outC
         )
 
@@ -1137,6 +1151,7 @@ class BevEncode_4(nn.Module): #This class is used for the creation of BEV semant
         #print("(BevEncode_4 - forward()) After conv1 - size of x:", x.size())
         x = self.bn1(x)
         x = self.relu(x)
+        x = self.dropout(x)
 
         x1 = self.layer1(x)
         #print("(BevEncode_4 - forward()) size of x1:", x1.size())
@@ -1162,7 +1177,7 @@ class BevEncode_5(nn.Module): #This class is used for the creation of BEV semant
     def __init__(self, inC, outC):
         super(BevEncode_5, self).__init__()
 
-        trunk = resnet50(pretrained=False, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
+        trunk = resnet50(pretrained=True, zero_init_residual=True) #setting up the fact that Lift Splat Shoot uses a kernel of size 7, with stride 2 and padding
                                                                     #if inC is also 64, this effectively keeps the input and output size the same (see Sec 4.1 of Lift Splat Shoot)
         self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
                                bias=False)
@@ -1172,6 +1187,8 @@ class BevEncode_5(nn.Module): #This class is used for the creation of BEV semant
         self.layer1 = trunk.layer1 #Then use pretrained layers of ResNet 18 - layer1 - this is x1
         self.layer2 = trunk.layer2 #Layer 2 of pretrained ResNet18 - this is x2
         self.layer3 = trunk.layer3 #Layer 3 of pretrained ResNet18 - this is x3
+        #adding this for applying dropout - to try to fix overfitting
+        self.dropout = nn.Dropout(p=0.5)
 
         self.up1 = Up(512+1024, 1024, scale_factor=2) #try concatenating an upsampled version of x2 with x1
         self.up2 = Up(256+1024, 1024, scale_factor=2) #try concatenating an upsampled version of what results from up1 with x3
@@ -1181,6 +1198,8 @@ class BevEncode_5(nn.Module): #This class is used for the creation of BEV semant
             nn.Conv2d(1024, 512, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
+            #adding this for applying dropout - to try to fix overfitting
+            nn.Dropout(p=0.5),
             nn.Conv2d(512, outC, kernel_size=1, padding=0), ##number of output channels outC
         )
 
@@ -1189,6 +1208,7 @@ class BevEncode_5(nn.Module): #This class is used for the creation of BEV semant
         #print("(BevEncode_5 - forward()) After conv1 - size of x:", x.size())
         x = self.bn1(x)
         x = self.relu(x)
+        x = self.dropout(x)
 
         x1 = self.layer1(x)
         #print("(BevEncode_5 - forward()) size of x1:", x1.size())
