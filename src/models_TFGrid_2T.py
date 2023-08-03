@@ -353,10 +353,10 @@ class Transfuser(nn.Module):
 
         bz, lidar_channel, h, w = lidar_list.shape
         img_channel = image_list[0].shape[0]           
-        self.config.n_views = len(image_list) // self.config.seq_len
+        self.config['n_views'] = len(image_list) // self.config['seq_len']
 
-        image_tensor = torch.stack(image_list, dim=1).view(bz * self.config.seq_len, img_channel, h, w)
-        lidar_tensor = torch.stack(list(lidar_list), dim=1).view(bz * self.config.seq_len, lidar_channel, h, w)
+        image_tensor = torch.stack(image_list, dim=1).view(bz * self.config['seq_len'], img_channel, h, w)
+        lidar_tensor = torch.stack(list(lidar_list), dim=1).view(bz * self.config['seq_len'], lidar_channel, h, w)
 
         #image_tensor.shape)#torch.Size([4, 64, 256, 256])
         #lidar_tensor.shape)#torch.Size([4, 64, 256, 256])
